@@ -1,0 +1,2 @@
+# pokernow-reporter
+pokernow-reporter
