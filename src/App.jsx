@@ -1,6 +1,32 @@
 import React, { useState, useEffect } from 'react';
 import { Download, Trash2, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Upload, ArrowRight } from 'lucide-react';
-import storage from './storage';
+
+// Storage utility with fallback
+const storage = {
+  async get(key) {
+    try {
+      if (window.storage && typeof window.storage.get === 'function') {
+        return await window.storage.get(key);
+      }
+      const value = localStorage.getItem(key);
+      if (value === null) throw new Error('Key not found');
+      return { key, value };
+    } catch (error) {
+      throw error;
+    }
+  },
+  async set(key, value) {
+    try {
+      if (window.storage && typeof window.storage.set === 'function') {
+        return await window.storage.set(key, value);
+      }
+      localStorage.setItem(key, value);
+      return { key, value };
+    } catch (error) {
+      throw error;
+    }
+  }
+};
 
 export default function PokerNowReporter() {
   const [games, setGames] = useState([]);
@@ -59,13 +85,13 @@ export default function PokerNowReporter() {
   const parseCSV = (csvText) => {
     const lines = csvText.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
-    
+
     const data = [];
     for (let i = 1; i < lines.length; i++) {
       const values = [];
       let current = '';
       let inQuotes = false;
-      
+
       for (let char of lines[i]) {
         if (char === '"') {
           inQuotes = !inQuotes;
@@ -77,14 +103,14 @@ export default function PokerNowReporter() {
         }
       }
       values.push(current.trim());
-      
+
       const row = {};
       headers.forEach((header, index) => {
         row[header] = values[index] || '';
       });
       data.push(row);
     }
-    
+
     return data;
   };
 
@@ -106,18 +132,18 @@ export default function PokerNowReporter() {
       }
 
       if (!playerStats[playerKey]) {
-        playerStats[playerKey] = { 
+        playerStats[playerKey] = {
           name: player,
-          buyIn: 0, 
-          buyOut: 0, 
-          net: 0 
+          buyIn: 0,
+          buyOut: 0,
+          net: 0
         };
       }
 
       playerStats[playerKey].buyIn += buyIn;
       playerStats[playerKey].buyOut += buyOut;
       playerStats[playerKey].net += net;
-      
+
       totalBuyIn += buyIn;
     });
 
@@ -136,38 +162,61 @@ export default function PokerNowReporter() {
   };
 
   const handleFileUpload = async (event) => {
-    const file = event.target.files[0];
-    if (!file) return;
+    const files = Array.from(event.target.files);
+    if (files.length === 0) return;
 
-    if (!file.name.endsWith('.csv')) {
-      showMessage('error', 'Please upload a CSV file');
+    // Check if all files are CSV
+    const nonCsvFiles = files.filter(file => !file.name.endsWith('.csv'));
+    if (nonCsvFiles.length > 0) {
+      showMessage('error', `Please upload only CSV files. Found: ${nonCsvFiles.map(f => f.name).join(', ')}`);
       return;
     }
 
-    setLoading(true);
+    setLoading({ current: 0, total: files.length });
+    const newGamesData = [];
+    const errors = [];
+
     try {
-      const text = await file.text();
-      const csvData = parseCSV(text);
-      const analysis = analyzeGameData(csvData);
-      const gameId = file.name.replace('.csv', '').replace('ledger_', '');
+      for (let i = 0; i < files.length; i++) {
+        const file = files[i];
+        setLoading({ current: i + 1, total: files.length });
 
-      const gameData = {
-        gameId,
-        url: 'Uploaded file: ' + file.name,
-        date: analysis.gameDate,
-        players: analysis.players,
-        playerCount: analysis.playerCount,
-        winner: analysis.winner,
-        winnerProfit: analysis.winnerProfit,
-        totalPot: analysis.totalPot,
-        addedAt: new Date().toISOString(),
-        rawData: csvData
-      };
+        try {
+          const text = await file.text();
+          const csvData = parseCSV(text);
+          const analysis = analyzeGameData(csvData);
+          const gameId = file.name.replace('.csv', '').replace('ledger_', '');
 
-      const newGames = [...games, gameData];
-      await saveGames(newGames);
-      
-      showMessage('success', `Game added! ${analysis.playerCount} players, Winner: ${analysis.winner}`);
+          const gameData = {
+            gameId,
+            url: 'Uploaded file: ' + file.name,
+            date: analysis.gameDate,
+            players: analysis.players,
+            playerCount: analysis.playerCount,
+            winner: analysis.winner,
+            winnerProfit: analysis.winnerProfit,
+            totalPot: analysis.totalPot,
+            addedAt: new Date().toISOString(),
+            rawData: csvData
+          };
+
+          newGamesData.push(gameData);
+        } catch (error) {
+          errors.push(`${file.name}: ${error.message}`);
+        }
+      }
+
+      if (newGamesData.length > 0) {
+        const allGames = [...games, ...newGamesData];
+        await saveGames(allGames);
+      }
+
+      if (errors.length > 0) {
+        showMessage('error', `${newGamesData.length} games added, ${errors.length} failed: ${errors.join('; ')}`);
+      } else {
+        showMessage('success', `Successfully added ${newGamesData.length} game${newGamesData.length > 1 ? 's' : ''}!`);
+      }
+
       event.target.value = '';
     } catch (error) {
       showMessage('error', `Error: ${error.message}`);
@@ -196,12 +245,12 @@ export default function PokerNowReporter() {
 
   const calculateSettlements = () => {
     const playerConsolidated = {};
-    
+
     games.forEach(game => {
       if (game.players && Array.isArray(game.players)) {
         game.players.forEach(player => {
           const playerKey = player.name.toLowerCase().trim();
-          
+
           if (!playerConsolidated[playerKey]) {
             playerConsolidated[playerKey] = {
               name: player.name,
@@ -209,7 +258,7 @@ export default function PokerNowReporter() {
               totalNet: 0
             };
           }
-          
+
           playerConsolidated[playerKey].totalNet += player.net || 0;
         });
       }
@@ -218,30 +267,30 @@ export default function PokerNowReporter() {
     const players = Object.values(playerConsolidated);
     const creditors = players.filter(p => p.totalNet > 0).sort((a, b) => b.totalNet - a.totalNet);
     const debtors = players.filter(p => p.totalNet < 0).sort((a, b) => a.totalNet - b.totalNet);
-    
+
     const settlements = [];
     let creditorIdx = 0;
     let debtorIdx = 0;
-    
+
     while (creditorIdx < creditors.length && debtorIdx < debtors.length) {
       const creditor = creditors[creditorIdx];
       const debtor = debtors[debtorIdx];
       const amountToSettle = Math.min(creditor.totalNet, Math.abs(debtor.totalNet));
-      
+
       settlements.push({
         from: debtor.fullName,
         to: creditor.fullName,
         amount: amountToSettle,
         actualValue: (amountToSettle / 100).toFixed(2)
       });
-      
+
       creditor.totalNet -= amountToSettle;
       debtor.totalNet += amountToSettle;
-      
+
       if (creditor.totalNet === 0) creditorIdx++;
       if (debtor.totalNet === 0) debtorIdx++;
     }
-    
+
     return settlements;
   };
 
@@ -253,12 +302,12 @@ export default function PokerNowReporter() {
 
     try {
       const playerConsolidated = {};
-      
+
       games.forEach(game => {
         if (game.players && Array.isArray(game.players)) {
           game.players.forEach(player => {
             const playerKey = player.name.toLowerCase().trim();
-            
+
             if (!playerConsolidated[playerKey]) {
               playerConsolidated[playerKey] = {
                 name: player.name,
@@ -269,12 +318,12 @@ export default function PokerNowReporter() {
                 wins: 0
               };
             }
-            
+
             playerConsolidated[playerKey].totalBuyIn += player.buyIn || 0;
             playerConsolidated[playerKey].totalBuyOut += player.buyOut || 0;
             playerConsolidated[playerKey].totalNet += player.net || 0;
             playerConsolidated[playerKey].gamesPlayed += 1;
-            
+
             if (game.winner.toLowerCase().trim() === playerKey) {
               playerConsolidated[playerKey].wins += 1;
             }
@@ -290,14 +339,14 @@ export default function PokerNowReporter() {
       rows.push(['Generated on', new Date().toLocaleString()]);
       rows.push(['Total Games', games.length]);
       rows.push([]);
-      
+
       rows.push(['CONSOLIDATED PLAYER STATISTICS']);
       rows.push(['Player', 'Games Played', 'Wins', 'Total Buy-In', 'Total Buy-Out', 'Total Net P/L', 'Win Rate %', 'Actual Value']);
-      
+
       consolidatedPlayers.forEach(player => {
         const winRate = player.gamesPlayed > 0 ? ((player.wins / player.gamesPlayed) * 100).toFixed(1) : '0.0';
         const actualValue = (player.totalNet / 100).toFixed(2);
-        
+
         rows.push([
           player.name,
           player.gamesPlayed,
@@ -310,84 +359,7 @@ export default function PokerNowReporter() {
         ]);
       });
 
-      rows.push([]);
-      
-      const playerConsolidatedBalance = {};
-      games.forEach(game => {
-        if (game.players && Array.isArray(game.players)) {
-          game.players.forEach(player => {
-            const playerKey = player.name.toLowerCase().trim();
-            if (!playerConsolidatedBalance[playerKey]) {
-              playerConsolidatedBalance[playerKey] = {
-                name: player.name,
-                totalNet: 0
-              };
-            }
-            playerConsolidatedBalance[playerKey].totalNet += player.net || 0;
-          });
-        }
-      });
-
-      const playersBalance = Object.values(playerConsolidatedBalance);
-      const totalPositive = playersBalance.filter(p => p.totalNet > 0).reduce((sum, p) => sum + p.totalNet, 0);
-      const totalNegative = playersBalance.filter(p => p.totalNet < 0).reduce((sum, p) => sum + Math.abs(p.totalNet), 0);
-      const difference = Math.abs(totalPositive - totalNegative);
-
-      rows.push(['BALANCE SUMMARY']);
-      rows.push(['Category', 'Actual Value']);
-      rows.push(['Total Receivable (Money to be received)', (totalPositive / 100).toFixed(2)]);
-      rows.push(['Total Payable (Money to be paid)', (totalNegative / 100).toFixed(2)]);
-      rows.push(['Difference (should be 0 if balanced)', (difference / 100).toFixed(2)]);
-      rows.push([]);
-      
-      const settlements = calculateSettlements();
-      rows.push(['SETTLEMENT - WHO PAYS WHOM']);
-      rows.push(['From (Debtor)', 'To (Creditor)', 'Actual Value']);
-      
-      if (settlements.length === 0) {
-        rows.push(['No settlements needed - all players are even']);
-      } else {
-        settlements.forEach(settlement => {
-          rows.push([settlement.from, settlement.to, settlement.actualValue]);
-        });
-      }
-      
-      rows.push([]);
-      rows.push(['Game Summary']);
-      rows.push(['Game ID', 'Date', 'Players', 'Winner', 'Winner Profit', 'Total Pot']);
-      
-      games.forEach(game => {
-        rows.push([
-          game.gameId || '',
-          game.date || '',
-          game.playerCount || 0,
-          game.winner || '',
-          game.winnerProfit || 0,
-          game.totalPot || 0
-        ]);
-      });
-
-      rows.push([]);
-      rows.push(['Detailed Player Performance by Game']);
-      rows.push([]);
-
-      games.forEach((game, idx) => {
-        rows.push([`Game ${idx + 1} - ${game.date} (${game.gameId})`]);
-        rows.push(['Player', 'Buy-In', 'Buy-Out', 'Net Profit/Loss']);
-        if (game.players && Array.isArray(game.players)) {
-          game.players.forEach(player => {
-            rows.push([
-              player.name || '', 
-              player.buyIn || 0, 
-              player.buyOut || 0, 
-              player.net || 0
-            ]);
-          });
-        }
-        rows.push([]);
-      });
-
-      const csvContent = '\uFEFF' + rows.map(row => 
+      const csvContent = '\uFEFF' + rows.map(row =>
         row.map(cell => {
           const cellStr = String(cell);
           if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
@@ -407,8 +379,8 @@ export default function PokerNowReporter() {
       link.click();
       document.body.removeChild(link);
       window.URL.revokeObjectURL(url);
-      
-      showMessage('success', 'Report exported successfully! Open with Excel.');
+
+      showMessage('success', 'Report exported successfully!');
     } catch (error) {
       showMessage('error', 'Export failed: ' + error.message);
     }
@@ -434,7 +406,7 @@ export default function PokerNowReporter() {
           <div className="p-6">
             {message.text && (
               <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${
-                message.type === 'success' ? 'bg-green-100 text-green-800' : 
+                message.type === 'success' ? 'bg-green-100 text-green-800' :
                 message.type === 'info' ? 'bg-blue-100 text-blue-800' :
                 'bg-red-100 text-red-800'
               }`}>
@@ -445,7 +417,7 @@ export default function PokerNowReporter() {
 
             <div className="mb-6">
               <label className="block text-sm font-medium text-gray-700 mb-2">
-                Upload CSV Ledger File
+                Upload CSV Ledger Files
               </label>
               <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 text-center hover:border-green-500 transition-colors bg-gradient-to-br from-green-50 to-blue-50">
                 <input
@@ -455,24 +427,25 @@ export default function PokerNowReporter() {
                   className="hidden"
                   id="file-upload"
                   disabled={loading}
+                  multiple
                 />
-                <label 
-                  htmlFor="file-upload" 
+                <label
+                  htmlFor="file-upload"
                   className="cursor-pointer flex flex-col items-center gap-3"
                 >
                   <Upload size={48} className="text-green-600" />
                   <div>
                     <span className="text-lg font-semibold text-gray-700 block">
-                      Click to upload CSV ledger file
+                      Click to upload CSV ledger files
                     </span>
                     <span className="text-sm text-gray-500 mt-1 block">
-                      Download the ledger CSV from your PokerNow game page
+                      Select multiple files to upload at once
                     </span>
                   </div>
                   {loading && (
                     <div className="mt-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
-                      <p className="text-sm text-gray-600 mt-2">Processing...</p>
+                      <p className="text-sm text-gray-600 mt-2">Processing {loading.current} of {loading.total} files...</p>
                     </div>
                   )}
                 </label>
@@ -530,12 +503,12 @@ export default function PokerNowReporter() {
                       <tbody>
                         {(() => {
                           const playerConsolidated = {};
-                          
+
                           games.forEach(game => {
                             if (game.players && Array.isArray(game.players)) {
                               game.players.forEach(player => {
                                 const playerKey = player.name.toLowerCase().trim();
-                                
+
                                 if (!playerConsolidated[playerKey]) {
                                   playerConsolidated[playerKey] = {
                                     name: player.name,
@@ -546,12 +519,12 @@ export default function PokerNowReporter() {
                                     wins: 0
                                   };
                                 }
-                                
+
                                 playerConsolidated[playerKey].totalBuyIn += player.buyIn || 0;
                                 playerConsolidated[playerKey].totalBuyOut += player.buyOut || 0;
                                 playerConsolidated[playerKey].totalNet += player.net || 0;
                                 playerConsolidated[playerKey].gamesPlayed += 1;
-                                
+
                                 if (game.winner.toLowerCase().trim() === playerKey) {
                                   playerConsolidated[playerKey].wins += 1;
                                 }
@@ -565,7 +538,7 @@ export default function PokerNowReporter() {
                           return consolidatedPlayers.map((player, idx) => {
                             const winRate = player.gamesPlayed > 0 ? ((player.wins / player.gamesPlayed) * 100).toFixed(1) : '0.0';
                             const actualValue = (player.totalNet / 100).toFixed(2);
-                            
+
                             return (
                               <tr key={idx} className="border-b hover:bg-blue-50 transition-colors">
                                 <td className="p-3">
@@ -588,7 +561,7 @@ export default function PokerNowReporter() {
                                 <td className="p-3 text-right text-gray-700">₹{player.totalBuyIn.toLocaleString()}</td>
                                 <td className="p-3 text-right text-gray-700">₹{player.totalBuyOut.toLocaleString()}</td>
                                 <td className={`p-3 text-right font-bold text-lg ${
-                                  player.totalNet > 0 ? 'text-green-600' : 
+                                  player.totalNet > 0 ? 'text-green-600' :
                                   player.totalNet < 0 ? 'text-red-600' : 'text-gray-600'
                                 }`}>
                                   {player.totalNet > 0 ? '+' : ''}₹{player.totalNet.toLocaleString()}
@@ -603,7 +576,7 @@ export default function PokerNowReporter() {
                                   </span>
                                 </td>
                                 <td className={`p-3 text-right font-semibold ${
-                                  parseFloat(actualValue) > 0 ? 'text-green-600' : 
+                                  parseFloat(actualValue) > 0 ? 'text-green-600' :
                                   parseFloat(actualValue) < 0 ? 'text-red-600' : 'text-gray-600'
                                 }`}>
                                   {parseFloat(actualValue) > 0 ? '+' : ''}₹{parseFloat(actualValue).toLocaleString()}
@@ -620,19 +593,19 @@ export default function PokerNowReporter() {
                 <div className="mb-8 grid md:grid-cols-3 gap-4">
                   {(() => {
                     const playerConsolidated = {};
-                    
+
                     games.forEach(game => {
                       if (game.players && Array.isArray(game.players)) {
                         game.players.forEach(player => {
                           const playerKey = player.name.toLowerCase().trim();
-                          
+
                           if (!playerConsolidated[playerKey]) {
                             playerConsolidated[playerKey] = {
                               name: player.name,
                               totalNet: 0
                             };
                           }
-                          
+
                           playerConsolidated[playerKey].totalNet += player.net || 0;
                         });
                       }
@@ -688,7 +661,7 @@ export default function PokerNowReporter() {
                   <h2 className="text-2xl font-bold text-gray-800 mb-4">💰 Settlement - Who Pays Whom</h2>
                   {(() => {
                     const settlements = calculateSettlements();
-                    
+
                     if (settlements.length === 0) {
                       return (
                         <div className="text-center py-8 text-gray-600">
@@ -696,7 +669,7 @@ export default function PokerNowReporter() {
                         </div>
                       );
                     }
-                    
+
                     return (
                       <div className="space-y-3">
                         {settlements.map((settlement, idx) => (
