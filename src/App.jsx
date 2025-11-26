@@ -29,44 +29,59 @@ class PokerDatabase {
   }
 
   async saveGame(gameData) {
-    return new Promise(async (resolve, reject) => {
-      try {
-        // First check if game exists
-        const existing = await this.getGameByGameId(gameData.gameId);
-        if (existing) {
+    return new Promise((resolve, reject) => {
+      // First check if game already exists
+      const checkTransaction = this.db.transaction(['games'], 'readonly');
+      const checkStore = checkTransaction.objectStore('games');
+      const checkIndex = checkStore.index('gameId');
+      const checkRequest = checkIndex.get(gameData.gameId);
+
+      checkRequest.onsuccess = () => {
+        if (checkRequest.result) {
           console.log('Game already exists:', gameData.gameId);
-          resolve(existing.id);
+          resolve(checkRequest.result.id);
           return;
         }
 
-        // Create transaction and save in one go
-        const transaction = this.db.transaction(['games'], 'readwrite');
-        const store = transaction.objectStore('games');
+        // Game doesn't exist, add it
+        const addTransaction = this.db.transaction(['games'], 'readwrite');
+        const addStore = addTransaction.objectStore('games');
 
-        transaction.onerror = () => {
-          console.error('Transaction error:', transaction.error);
-          reject(transaction.error);
+        addTransaction.onerror = (event) => {
+          console.error('Add transaction error:', event.target.error);
+          reject(event.target.error);
         };
 
-        transaction.oncomplete = () => {
-          console.log('Transaction completed successfully');
+        const addRequest = addStore.add(gameData);
+
+        addRequest.onsuccess = () => {
+          console.log('✓ Game saved successfully with ID:', addRequest.result);
+          resolve(addRequest.result);
         };
 
-        const request = store.add(gameData);
+        addRequest.onerror = (event) => {
+          console.error('✗ Add request error:', event.target.error);
+          reject(event.target.error);
+        };
+      };
 
-        request.onsuccess = () => {
-          console.log('Game added with ID:', request.result);
-          resolve(request.result);
+      checkRequest.onerror = () => {
+        console.error('Check request error, attempting to add anyway');
+        // Try to add anyway
+        const addTransaction = this.db.transaction(['games'], 'readwrite');
+        const addStore = addTransaction.objectStore('games');
+        const addRequest = addStore.add(gameData);
+
+        addRequest.onsuccess = () => {
+          console.log('✓ Game saved successfully with ID:', addRequest.result);
+          resolve(addRequest.result);
         };
 
-        request.onerror = () => {
-          console.error('Add request error:', request.error);
-          reject(request.error);
+        addRequest.onerror = (event) => {
+          console.error('✗ Add request error:', event.target.error);
+          reject(event.target.error);
         };
-      } catch (error) {
-        console.error('SaveGame error:', error);
-        reject(error);
-      }
+      };
     });
   }
 
@@ -186,15 +201,23 @@ export default function PokerNowReporter() {
 
   const initializeApp = async () => {
     try {
+      console.log('🔄 Initializing database...');
       await db.init();
+      console.log('✓ Database initialized');
+
       const dbGames = await db.getAllGames();
+      console.log('✓ Loaded games from DB:', dbGames.length);
+      console.log('Games data:', dbGames);
+
       setGames(dbGames);
       setIsInitialized(true);
+
       if (dbGames.length > 0) {
         showMessage('success', `Database loaded: ${dbGames.length} games`);
       }
     } catch (error) {
-      console.error('Init error:', error);
+      console.error('❌ Init error:', error);
+      showMessage('error', 'Database initialization failed');
       setIsInitialized(true);
     }
   };
@@ -396,23 +419,12 @@ export default function PokerNowReporter() {
       const data = await db.exportToJSON();
       const jsonString = JSON.stringify(data, null, 2);
 
-      // Try to download first
-      try {
-        const blob = new Blob([jsonString], { type: 'application/json' });
-        const url = window.URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.download = `pokernow_backup_${new Date().toISOString().split('T')[0]}.json`;
-        link.click();
-        window.URL.revokeObjectURL(url);
-        showMessage('success', 'Database backup downloaded!');
-      } catch (downloadError) {
-        // If download fails, show in modal
-        console.log('Download blocked, showing in modal');
-        setBackupData(jsonString);
-        setShowBackupModal(true);
-      }
+      // Always show in modal (downloads are blocked in Claude.ai)
+      console.log('Opening backup modal with data length:', jsonString.length);
+      setBackupData(jsonString);
+      setShowBackupModal(true);
     } catch (error) {
+      console.error('Backup error:', error);
       showMessage('error', 'Backup failed: ' + error.message);
     }
   };
@@ -622,6 +634,24 @@ export default function PokerNowReporter() {
                       Copy to Clipboard
                     </button>
                     <button
+                      onClick={() => {
+                        // Create download link
+                        const element = document.createElement('a');
+                        const file = new Blob([backupData], {type: 'application/json'});
+                        element.href = URL.createObjectURL(file);
+                        element.download = `pokernow_backup_${new Date().toISOString().split('T')[0]}.json`;
+                        document.body.appendChild(element);
+                        element.click();
+                        document.body.removeChild(element);
+                        setShowBackupModal(false);
+                        showMessage('success', 'Backup downloaded!');
+                      }}
+                      className="px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 flex items-center gap-2 font-semibold"
+                    >
+                      <Download size={20} />
+                      Download File
+                    </button>
+                    <button
                       onClick={() => setShowBackupModal(false)}
                       className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold"
                     >
@@ -630,7 +660,7 @@ export default function PokerNowReporter() {
                   </div>
                   <div className="px-6 pb-4 bg-gray-50 border-t">
                     <p className="text-sm text-gray-600">
-                      💡 <strong>To save:</strong> Click "Copy to Clipboard", then paste into a text editor (Notepad, VS Code, etc.) and save as <code className="bg-gray-200 px-2 py-1 rounded">backup.json</code>
+                      💡 <strong>Note:</strong> If download is blocked, use "Copy to Clipboard" and paste into a text editor to save as <code className="bg-gray-200 px-2 py-1 rounded">backup.json</code>
                     </p>
                   </div>
                 </div>
@@ -684,10 +714,15 @@ export default function PokerNowReporter() {
             </div>
 
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                <Database size={24} className="text-green-600" />
-                Games: {games.length}
-              </h2>
+              <div>
+                <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                  <Database size={24} className="text-green-600" />
+                  Games in Database: {games.length}
+                </h2>
+                <p className="text-sm text-gray-600 mt-1">
+                  {games.length === 0 ? 'No games stored yet' : `${games.reduce((sum, g) => sum + (g.players?.length || 0), 0)} total player records`}
+                </p>
+              </div>
               <div className="flex gap-2">
                 <button
                   onClick={exportDatabase}
