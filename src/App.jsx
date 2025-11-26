@@ -1,38 +1,167 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Trash2, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Upload, ArrowRight } from 'lucide-react';
+import { Download, Trash2, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Upload, ArrowRight, Database, Save } from 'lucide-react';
 
-// Storage utility with fallback
-const storage = {
-  async get(key) {
-    try {
-      if (window.storage && typeof window.storage.get === 'function') {
-        return await window.storage.get(key);
-      }
-      const value = localStorage.getItem(key);
-      if (value === null) throw new Error('Key not found');
-      return { key, value };
-    } catch (error) {
-      throw error;
-    }
-  },
-  async set(key, value) {
-    try {
-      if (window.storage && typeof window.storage.set === 'function') {
-        return await window.storage.set(key, value);
-      }
-      localStorage.setItem(key, value);
-      return { key, value };
-    } catch (error) {
-      throw error;
-    }
+// IndexedDB Database
+const DB_NAME = 'PokerNowDB';
+const DB_VERSION = 1;
+
+class PokerDatabase {
+  constructor() {
+    this.db = null;
   }
-};
+
+  async init() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('games')) {
+          const store = db.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
+          store.createIndex('gameId', 'gameId', { unique: true });
+        }
+      };
+    });
+  }
+
+  async saveGame(gameData) {
+    return new Promise(async (resolve, reject) => {
+      try {
+        // First check if game exists
+        const existing = await this.getGameByGameId(gameData.gameId);
+        if (existing) {
+          console.log('Game already exists:', gameData.gameId);
+          resolve(existing.id);
+          return;
+        }
+
+        // Create transaction and save in one go
+        const transaction = this.db.transaction(['games'], 'readwrite');
+        const store = transaction.objectStore('games');
+
+        transaction.onerror = () => {
+          console.error('Transaction error:', transaction.error);
+          reject(transaction.error);
+        };
+
+        transaction.oncomplete = () => {
+          console.log('Transaction completed successfully');
+        };
+
+        const request = store.add(gameData);
+
+        request.onsuccess = () => {
+          console.log('Game added with ID:', request.result);
+          resolve(request.result);
+        };
+
+        request.onerror = () => {
+          console.error('Add request error:', request.error);
+          reject(request.error);
+        };
+      } catch (error) {
+        console.error('SaveGame error:', error);
+        reject(error);
+      }
+    });
+  }
+
+  async getAllGames() {
+    const transaction = this.db.transaction(['games'], 'readonly');
+    const store = transaction.objectStore('games');
+    const request = store.getAll();
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async getGameByGameId(gameId) {
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db.transaction(['games'], 'readonly');
+        const store = transaction.objectStore('games');
+        const index = store.index('gameId');
+        const request = index.get(gameId);
+
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
+
+        request.onerror = () => {
+          resolve(null);
+        };
+      } catch (error) {
+        console.error('getGameByGameId error:', error);
+        resolve(null);
+      }
+    });
+  }
+
+  async deleteGame(id) {
+    const transaction = this.db.transaction(['games'], 'readwrite');
+    const store = transaction.objectStore('games');
+    const request = store.delete(id);
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async clearAllData() {
+    const transaction = this.db.transaction(['games'], 'readwrite');
+    const store = transaction.objectStore('games');
+    const request = store.clear();
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
+
+  async exportToJSON() {
+    const games = await this.getAllGames();
+    return {
+      version: DB_VERSION,
+      exportDate: new Date().toISOString(),
+      games: games,
+      gameCount: games.length,
+      appName: 'PokerNow Reporter'
+    };
+  }
+
+  async importFromJSON(jsonData) {
+    if (!jsonData.games || !Array.isArray(jsonData.games)) {
+      throw new Error('Invalid backup file format');
+    }
+
+    // Clear existing data first
+    await this.clearAllData();
+
+    // Import each game
+    for (const game of jsonData.games) {
+      // Remove the database ID to let it auto-generate
+      const gameToImport = { ...game };
+      delete gameToImport.id;
+      await this.saveGame(gameToImport);
+    }
+
+    return jsonData.games.length;
+  }
+}
+
+const db = new PokerDatabase();
 
 export default function PokerNowReporter() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState({ type: '', text: '' });
   const [isInitialized, setIsInitialized] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [backupData, setBackupData] = useState('');
 
   const playerAliases = {
     'cs': 'Chintan Shah',
@@ -52,28 +181,21 @@ export default function PokerNowReporter() {
   };
 
   useEffect(() => {
-    loadGames();
+    initializeApp();
   }, []);
 
-  const loadGames = async () => {
+  const initializeApp = async () => {
     try {
-      const result = await storage.get('pokernow-games');
-      if (result && result.value) {
-        setGames(JSON.parse(result.value));
+      await db.init();
+      const dbGames = await db.getAllGames();
+      setGames(dbGames);
+      setIsInitialized(true);
+      if (dbGames.length > 0) {
+        showMessage('success', `Database loaded: ${dbGames.length} games`);
       }
-      setIsInitialized(true);
     } catch (error) {
-      setGames([]);
+      console.error('Init error:', error);
       setIsInitialized(true);
-    }
-  };
-
-  const saveGames = async (newGames) => {
-    try {
-      await storage.set('pokernow-games', JSON.stringify(newGames));
-      setGames(newGames);
-    } catch (error) {
-      showMessage('error', 'Failed to save games to storage');
     }
   };
 
@@ -85,8 +207,8 @@ export default function PokerNowReporter() {
   const parseCSV = (csvText) => {
     const lines = csvText.trim().split('\n');
     const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
-
     const data = [];
+
     for (let i = 1; i < lines.length; i++) {
       const values = [];
       let current = '';
@@ -120,8 +242,8 @@ export default function PokerNowReporter() {
     let gameDate = null;
 
     csvData.forEach(row => {
-      const player = row.player_nickname;
-      const playerKey = player.toLowerCase().trim();
+      const player = row.player_nickname.trim(); // Keep original case
+      const fullName = getPlayerFullName(player);
       const buyIn = parseFloat(row.buy_in) || 0;
       const buyOut = parseFloat(row.buy_out) || 0;
       const net = parseFloat(row.net) || 0;
@@ -131,9 +253,12 @@ export default function PokerNowReporter() {
         gameDate = new Date(sessionStart).toISOString().split('T')[0];
       }
 
+      const playerKey = player.toLowerCase(); // Use lowercase for grouping
+
       if (!playerStats[playerKey]) {
         playerStats[playerKey] = {
           name: player,
+          fullName: fullName,
           buyIn: 0,
           buyOut: 0,
           net: 0
@@ -143,152 +268,256 @@ export default function PokerNowReporter() {
       playerStats[playerKey].buyIn += buyIn;
       playerStats[playerKey].buyOut += buyOut;
       playerStats[playerKey].net += net;
-
       totalBuyIn += buyIn;
     });
 
     const players = Object.values(playerStats).sort((a, b) => b.net - a.net);
     const winner = players[0];
-    const totalPot = totalBuyIn;
 
     return {
       gameDate,
       players,
       winner: winner.name,
+      winnerFullName: winner.fullName,
       winnerProfit: winner.net,
-      totalPot,
+      totalPot: totalBuyIn,
       playerCount: players.length
     };
   };
 
   const handleFileUpload = async (event) => {
+    console.log('File upload triggered');
     const files = Array.from(event.target.files);
-    if (files.length === 0) return;
+    console.log('Files selected:', files.length, files);
 
-    // Check if all files are CSV
+    if (files.length === 0) {
+      console.log('No files selected');
+      return;
+    }
+
     const nonCsvFiles = files.filter(file => !file.name.endsWith('.csv'));
     if (nonCsvFiles.length > 0) {
-      showMessage('error', `Please upload only CSV files. Found: ${nonCsvFiles.map(f => f.name).join(', ')}`);
+      showMessage('error', 'Please upload only CSV files');
+      console.log('Non-CSV files:', nonCsvFiles);
       return;
     }
 
     setLoading({ current: 0, total: files.length });
-    const newGamesData = [];
     const errors = [];
+    let successCount = 0;
 
     try {
       for (let i = 0; i < files.length; i++) {
         const file = files[i];
+        console.log(`Processing file ${i + 1}/${files.length}:`, file.name);
         setLoading({ current: i + 1, total: files.length });
 
         try {
           const text = await file.text();
+          console.log('File text length:', text.length);
+          console.log('First 200 chars:', text.substring(0, 200));
+
           const csvData = parseCSV(text);
+          console.log('Parsed CSV rows:', csvData.length);
+          console.log('First row:', csvData[0]);
+
           const analysis = analyzeGameData(csvData);
+          console.log('Analysis:', analysis);
+
           const gameId = file.name.replace('.csv', '').replace('ledger_', '');
 
           const gameData = {
             gameId,
-            url: 'Uploaded file: ' + file.name,
             date: analysis.gameDate,
             players: analysis.players,
             playerCount: analysis.playerCount,
             winner: analysis.winner,
             winnerProfit: analysis.winnerProfit,
             totalPot: analysis.totalPot,
-            addedAt: new Date().toISOString(),
-            rawData: csvData
+            addedAt: new Date().toISOString()
           };
 
-          newGamesData.push(gameData);
+          console.log('Saving game:', gameData);
+          await db.saveGame(gameData);
+          successCount++;
+          console.log('Game saved successfully');
         } catch (error) {
+          console.error('Error processing file:', file.name, error);
           errors.push(`${file.name}: ${error.message}`);
         }
       }
 
-      if (newGamesData.length > 0) {
-        const allGames = [...games, ...newGamesData];
-        await saveGames(allGames);
-      }
+      // Reload games from database
+      console.log('Reloading games from database...');
+      const dbGames = await db.getAllGames();
+      console.log('Loaded games:', dbGames.length, dbGames);
+      setGames(dbGames);
 
       if (errors.length > 0) {
-        showMessage('error', `${newGamesData.length} games added, ${errors.length} failed: ${errors.join('; ')}`);
+        showMessage('error', `${successCount} added, ${errors.length} failed: ${errors.join(', ')}`);
       } else {
-        showMessage('success', `Successfully added ${newGamesData.length} game${newGamesData.length > 1 ? 's' : ''}!`);
+        showMessage('success', `Successfully added ${successCount} game${successCount > 1 ? 's' : ''}!`);
       }
 
       event.target.value = '';
     } catch (error) {
+      console.error('Upload error:', error);
       showMessage('error', `Error: ${error.message}`);
     } finally {
       setLoading(false);
     }
   };
 
-  const deleteGame = async (index) => {
-    const newGames = games.filter((_, i) => i !== index);
-    await saveGames(newGames);
-    showMessage('success', 'Game deleted');
+  const deleteGame = async (id) => {
+    try {
+      await db.deleteGame(id);
+      const dbGames = await db.getAllGames();
+      setGames(dbGames);
+      showMessage('success', 'Game deleted');
+    } catch (error) {
+      showMessage('error', 'Delete failed: ' + error.message);
+    }
   };
 
   const clearAllGames = async () => {
-    if (window.confirm('Are you sure you want to delete all games? This cannot be undone.')) {
+    if (window.confirm('Delete all games? This cannot be undone.')) {
       try {
-        await storage.set('pokernow-games', JSON.stringify([]));
+        await db.clearAllData();
         setGames([]);
-        showMessage('success', 'All games cleared successfully!');
+        showMessage('success', 'All games cleared!');
       } catch (error) {
-        showMessage('error', 'Failed to clear games: ' + error.message);
+        showMessage('error', 'Clear failed: ' + error.message);
       }
     }
   };
 
+  const exportDatabase = async () => {
+    try {
+      const data = await db.exportToJSON();
+      const jsonString = JSON.stringify(data, null, 2);
+
+      // Try to download first
+      try {
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = window.URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `pokernow_backup_${new Date().toISOString().split('T')[0]}.json`;
+        link.click();
+        window.URL.revokeObjectURL(url);
+        showMessage('success', 'Database backup downloaded!');
+      } catch (downloadError) {
+        // If download fails, show in modal
+        console.log('Download blocked, showing in modal');
+        setBackupData(jsonString);
+        setShowBackupModal(true);
+      }
+    } catch (error) {
+      showMessage('error', 'Backup failed: ' + error.message);
+    }
+  };
+
+  const copyBackupToClipboard = () => {
+    navigator.clipboard.writeText(backupData).then(() => {
+      showMessage('success', 'Backup copied to clipboard!');
+    }).catch(() => {
+      showMessage('error', 'Failed to copy. Please select and copy manually.');
+    });
+  };
+
+  const downloadBackupFromModal = () => {
+    try {
+      // Create a data URI instead of blob
+      const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(backupData);
+      const link = document.createElement('a');
+      link.setAttribute('href', dataStr);
+      link.setAttribute('download', `pokernow_backup_${new Date().toISOString().split('T')[0]}.json`);
+      link.style.display = 'none';
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      setShowBackupModal(false);
+      showMessage('success', 'Backup file created! Check your downloads.');
+    } catch (error) {
+      console.error('Download error:', error);
+      showMessage('info', 'Download blocked. Please use "Copy to Clipboard" instead.');
+    }
+  };
+
+  const importDatabase = async (event) => {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    if (!file.name.endsWith('.json')) {
+      showMessage('error', 'Please upload a JSON backup file');
+      return;
+    }
+
+    if (!window.confirm('This will replace all current data with the backup. Continue?')) {
+      event.target.value = '';
+      return;
+    }
+
+    try {
+      const text = await file.text();
+      const jsonData = JSON.parse(text);
+
+      const importedCount = await db.importFromJSON(jsonData);
+      const dbGames = await db.getAllGames();
+      setGames(dbGames);
+
+      showMessage('success', `Restored ${importedCount} games from backup!`);
+      event.target.value = '';
+    } catch (error) {
+      showMessage('error', 'Import failed: ' + error.message);
+      event.target.value = '';
+    }
+  };
+
   const calculateSettlements = () => {
-    const playerConsolidated = {};
+    const playerTotals = {};
 
     games.forEach(game => {
-      if (game.players && Array.isArray(game.players)) {
+      if (game.players) {
         game.players.forEach(player => {
-          const playerKey = player.name.toLowerCase().trim();
-
-          if (!playerConsolidated[playerKey]) {
-            playerConsolidated[playerKey] = {
+          const key = player.name.toLowerCase().trim();
+          const fullName = player.fullName || getPlayerFullName(player.name);
+          if (!playerTotals[key]) {
+            playerTotals[key] = {
               name: player.name,
-              fullName: getPlayerFullName(player.name),
+              fullName: fullName,
               totalNet: 0
             };
           }
-
-          playerConsolidated[playerKey].totalNet += player.net || 0;
+          playerTotals[key].totalNet += player.net || 0;
         });
       }
     });
 
-    const players = Object.values(playerConsolidated);
+    const players = Object.values(playerTotals);
     const creditors = players.filter(p => p.totalNet > 0).sort((a, b) => b.totalNet - a.totalNet);
     const debtors = players.filter(p => p.totalNet < 0).sort((a, b) => a.totalNet - b.totalNet);
 
     const settlements = [];
-    let creditorIdx = 0;
-    let debtorIdx = 0;
+    let ci = 0, di = 0;
 
-    while (creditorIdx < creditors.length && debtorIdx < debtors.length) {
-      const creditor = creditors[creditorIdx];
-      const debtor = debtors[debtorIdx];
-      const amountToSettle = Math.min(creditor.totalNet, Math.abs(debtor.totalNet));
+    while (ci < creditors.length && di < debtors.length) {
+      const creditor = creditors[ci];
+      const debtor = debtors[di];
+      const amount = Math.min(creditor.totalNet, Math.abs(debtor.totalNet));
 
       settlements.push({
         from: debtor.fullName,
         to: creditor.fullName,
-        amount: amountToSettle,
-        actualValue: (amountToSettle / 100).toFixed(2)
+        amount: amount,
+        actualValue: (amount / 100).toFixed(2)
       });
 
-      creditor.totalNet -= amountToSettle;
-      debtor.totalNet += amountToSettle;
+      creditor.totalNet -= amount;
+      debtor.totalNet += amount;
 
-      if (creditor.totalNet === 0) creditorIdx++;
-      if (debtor.totalNet === 0) debtorIdx++;
+      if (creditor.totalNet === 0) ci++;
+      if (debtor.totalNet === 0) di++;
     }
 
     return settlements;
@@ -300,90 +529,53 @@ export default function PokerNowReporter() {
       return;
     }
 
-    try {
-      const playerConsolidated = {};
+    const rows = [['PokerNow Games Report'], ['Generated', new Date().toLocaleString()], []];
 
-      games.forEach(game => {
-        if (game.players && Array.isArray(game.players)) {
-          game.players.forEach(player => {
-            const playerKey = player.name.toLowerCase().trim();
-
-            if (!playerConsolidated[playerKey]) {
-              playerConsolidated[playerKey] = {
-                name: player.name,
-                totalBuyIn: 0,
-                totalBuyOut: 0,
-                totalNet: 0,
-                gamesPlayed: 0,
-                wins: 0
-              };
-            }
-
-            playerConsolidated[playerKey].totalBuyIn += player.buyIn || 0;
-            playerConsolidated[playerKey].totalBuyOut += player.buyOut || 0;
-            playerConsolidated[playerKey].totalNet += player.net || 0;
-            playerConsolidated[playerKey].gamesPlayed += 1;
-
-            if (game.winner.toLowerCase().trim() === playerKey) {
-              playerConsolidated[playerKey].wins += 1;
-            }
-          });
-        }
-      });
-
-      const consolidatedPlayers = Object.values(playerConsolidated)
-        .sort((a, b) => b.totalNet - a.totalNet);
-
-      const rows = [];
-      rows.push(['PokerNow Games Report']);
-      rows.push(['Generated on', new Date().toLocaleString()]);
-      rows.push(['Total Games', games.length]);
-      rows.push([]);
-
-      rows.push(['CONSOLIDATED PLAYER STATISTICS']);
-      rows.push(['Player', 'Games Played', 'Wins', 'Total Buy-In', 'Total Buy-Out', 'Total Net P/L', 'Win Rate %', 'Actual Value']);
-
-      consolidatedPlayers.forEach(player => {
-        const winRate = player.gamesPlayed > 0 ? ((player.wins / player.gamesPlayed) * 100).toFixed(1) : '0.0';
-        const actualValue = (player.totalNet / 100).toFixed(2);
-
-        rows.push([
-          player.name,
-          player.gamesPlayed,
-          player.wins,
-          player.totalBuyIn,
-          player.totalBuyOut,
-          player.totalNet,
-          winRate,
-          actualValue
-        ]);
-      });
-
-      const csvContent = '\uFEFF' + rows.map(row =>
-        row.map(cell => {
-          const cellStr = String(cell);
-          if (cellStr.includes(',') || cellStr.includes('"') || cellStr.includes('\n')) {
-            return '"' + cellStr.replace(/"/g, '""') + '"';
+    const playerStats = {};
+    games.forEach(game => {
+      if (game.players) {
+        game.players.forEach(player => {
+          const key = player.name.toLowerCase().trim();
+          const fullName = player.fullName || getPlayerFullName(player.name);
+          if (!playerStats[key]) {
+            playerStats[key] = {
+              name: player.name,
+              fullName: fullName,
+              totalBuyIn: 0,
+              totalBuyOut: 0,
+              totalNet: 0,
+              gamesPlayed: 0,
+              wins: 0
+            };
           }
-          return cellStr;
-        }).join(',')
-      ).join('\r\n');
+          playerStats[key].totalBuyIn += player.buyIn || 0;
+          playerStats[key].totalBuyOut += player.buyOut || 0;
+          playerStats[key].totalNet += player.net || 0;
+          playerStats[key].gamesPlayed += 1;
+          if (game.winner.toLowerCase().trim() === key) {
+            playerStats[key].wins += 1;
+          }
+        });
+      }
+    });
 
-      const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-      const url = window.URL.createObjectURL(blob);
-      const link = document.createElement('a');
-      link.setAttribute('href', url);
-      link.setAttribute('download', `pokernow_report_${new Date().toISOString().split('T')[0]}.csv`);
-      link.style.visibility = 'hidden';
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-      window.URL.revokeObjectURL(url);
+    const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
 
-      showMessage('success', 'Report exported successfully!');
-    } catch (error) {
-      showMessage('error', 'Export failed: ' + error.message);
-    }
+    rows.push(['Player', 'Games', 'Wins', 'Total Net', 'Actual Value']);
+    players.forEach(p => {
+      rows.push([p.fullName, p.gamesPlayed, p.wins, p.totalNet, (p.totalNet / 100).toFixed(2)]);
+    });
+
+    const csvContent = '\uFEFF' + rows.map(row => row.join(',')).join('\r\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `pokernow_report_${new Date().toISOString().split('T')[0]}.csv`;
+    link.click();
+    window.URL.revokeObjectURL(url);
+
+    showMessage('success', 'Report exported!');
   };
 
   if (!isInitialized) {
@@ -404,11 +596,50 @@ export default function PokerNowReporter() {
           </div>
 
           <div className="p-6">
+            {showBackupModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-4xl w-full max-h-[90vh] overflow-hidden flex flex-col">
+                  <div className="p-6 border-b">
+                    <h2 className="text-2xl font-bold text-gray-800">Database Backup</h2>
+                    <p className="text-sm text-gray-600 mt-2">Copy this JSON data or download it as a file</p>
+                  </div>
+
+                  <div className="p-6 overflow-auto flex-1">
+                    <textarea
+                      readOnly
+                      value={backupData}
+                      className="w-full h-96 p-4 border rounded font-mono text-xs bg-gray-50"
+                      onClick={(e) => e.target.select()}
+                    />
+                  </div>
+
+                  <div className="p-6 border-t flex gap-2 justify-end bg-gray-50">
+                    <button
+                      onClick={copyBackupToClipboard}
+                      className="px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 flex items-center gap-2 font-semibold"
+                    >
+                      <Save size={20} />
+                      Copy to Clipboard
+                    </button>
+                    <button
+                      onClick={() => setShowBackupModal(false)}
+                      className="px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 font-semibold"
+                    >
+                      Close
+                    </button>
+                  </div>
+                  <div className="px-6 pb-4 bg-gray-50 border-t">
+                    <p className="text-sm text-gray-600">
+                      💡 <strong>To save:</strong> Click "Copy to Clipboard", then paste into a text editor (Notepad, VS Code, etc.) and save as <code className="bg-gray-200 px-2 py-1 rounded">backup.json</code>
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             {message.text && (
               <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${
-                message.type === 'success' ? 'bg-green-100 text-green-800' :
-                message.type === 'info' ? 'bg-blue-100 text-blue-800' :
-                'bg-red-100 text-red-800'
+                message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
               }`}>
                 {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                 {message.text}
@@ -429,66 +660,94 @@ export default function PokerNowReporter() {
                   disabled={loading}
                   multiple
                 />
-                <label
-                  htmlFor="file-upload"
-                  className="cursor-pointer flex flex-col items-center gap-3"
-                >
+                <label htmlFor="file-upload" className="cursor-pointer flex flex-col items-center gap-3">
                   <Upload size={48} className="text-green-600" />
                   <div>
                     <span className="text-lg font-semibold text-gray-700 block">
-                      Click to upload CSV ledger files
+                      Click to upload CSV files
                     </span>
                     <span className="text-sm text-gray-500 mt-1 block">
-                      Select multiple files to upload at once
+                      Select multiple files at once
                     </span>
                   </div>
                   {loading && (
                     <div className="mt-2">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-600 mx-auto"></div>
-                      <p className="text-sm text-gray-600 mt-2">Processing {loading.current} of {loading.total} files...</p>
+                      <p className="text-sm text-gray-600 mt-2">Processing {loading.current} of {loading.total}...</p>
                     </div>
                   )}
                 </label>
               </div>
+              <p className="mt-2 text-xs text-gray-500 text-center">
+                💡 Open browser console (F12) to see detailed upload logs
+              </p>
             </div>
 
             <div className="flex justify-between items-center mb-4">
-              <h2 className="text-xl font-bold text-gray-800">
-                Games Tracked: {games.length}
+              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                <Database size={24} className="text-green-600" />
+                Games: {games.length}
               </h2>
               <div className="flex gap-2">
                 <button
+                  onClick={exportDatabase}
+                  disabled={games.length === 0}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Export database backup"
+                >
+                  <Save size={18} />
+                  Backup
+                </button>
+                <input
+                  type="file"
+                  accept=".json"
+                  onChange={importDatabase}
+                  className="hidden"
+                  id="import-backup"
+                />
+                <label
+                  htmlFor="import-backup"
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 cursor-pointer flex items-center gap-2"
+                  title="Restore from backup"
+                >
+                  <Upload size={18} />
+                  Restore
+                </label>
+                <button
                   onClick={exportToCSV}
                   disabled={games.length === 0}
-                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                  className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <Download size={18} />
-                  Export Report
+                  Export
                 </button>
                 <button
                   onClick={clearAllGames}
                   disabled={games.length === 0}
-                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2 transition-colors"
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
                 >
                   <Trash2 size={18} />
-                  Clear All
+                  Clear
                 </button>
               </div>
             </div>
 
             {games.length === 0 ? (
               <div className="text-center py-12 text-gray-500">
-                <p className="text-lg">No games added yet.</p>
-                <p className="mt-2">Upload a CSV file to get started.</p>
+                <p className="text-lg">No games yet. Upload CSV files to start!</p>
               </div>
             ) : (
               <>
-                <div className="mb-8 bg-gradient-to-r from-blue-50 to-purple-50 p-6 rounded-lg border-2 border-blue-200">
-                  <h2 className="text-2xl font-bold text-gray-800 mb-4">📊 Consolidated Player Statistics</h2>
+                <div className="mb-6 p-4 bg-green-50 rounded-lg border-2 border-green-200">
+                  <p className="text-lg font-bold text-green-800">✓ {games.length} Games Loaded</p>
+                </div>
+
+                <div className="mb-8 bg-blue-50 p-6 rounded-lg">
+                  <h2 className="text-2xl font-bold mb-4">📊 Consolidated Player Statistics</h2>
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm bg-white rounded-lg shadow">
+                    <table className="w-full text-sm bg-white rounded shadow">
                       <thead>
-                        <tr className="bg-gradient-to-r from-blue-600 to-purple-600 text-white">
+                        <tr className="bg-blue-600 text-white">
                           <th className="p-3 text-left">Rank</th>
                           <th className="p-3 text-left">Player</th>
                           <th className="p-3 text-center">Games</th>
@@ -502,280 +761,170 @@ export default function PokerNowReporter() {
                       </thead>
                       <tbody>
                         {(() => {
-                          const playerConsolidated = {};
-
+                          const playerStats = {};
                           games.forEach(game => {
-                            if (game.players && Array.isArray(game.players)) {
+                            if (game.players) {
                               game.players.forEach(player => {
-                                const playerKey = player.name.toLowerCase().trim();
-
-                                if (!playerConsolidated[playerKey]) {
-                                  playerConsolidated[playerKey] = {
+                                const key = player.name.toLowerCase().trim();
+                                const fullName = player.fullName || getPlayerFullName(player.name);
+                                if (!playerStats[key]) {
+                                  playerStats[key] = {
                                     name: player.name,
+                                    fullName: fullName,
                                     totalBuyIn: 0,
                                     totalBuyOut: 0,
                                     totalNet: 0,
-                                    gamesPlayed: 0,
+                                    games: 0,
                                     wins: 0
                                   };
                                 }
-
-                                playerConsolidated[playerKey].totalBuyIn += player.buyIn || 0;
-                                playerConsolidated[playerKey].totalBuyOut += player.buyOut || 0;
-                                playerConsolidated[playerKey].totalNet += player.net || 0;
-                                playerConsolidated[playerKey].gamesPlayed += 1;
-
-                                if (game.winner.toLowerCase().trim() === playerKey) {
-                                  playerConsolidated[playerKey].wins += 1;
+                                playerStats[key].totalBuyIn += player.buyIn || 0;
+                                playerStats[key].totalBuyOut += player.buyOut || 0;
+                                playerStats[key].totalNet += player.net || 0;
+                                playerStats[key].games += 1;
+                                if (game.winner.toLowerCase().trim() === key) {
+                                  playerStats[key].wins += 1;
                                 }
                               });
                             }
                           });
+                          return Object.values(playerStats)
+                            .sort((a, b) => b.totalNet - a.totalNet)
+                            .map((p, i) => {
+                              const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
+                              const actualValue = (p.totalNet / 100).toFixed(2);
 
-                          const consolidatedPlayers = Object.values(playerConsolidated)
-                            .sort((a, b) => b.totalNet - a.totalNet);
-
-                          return consolidatedPlayers.map((player, idx) => {
-                            const winRate = player.gamesPlayed > 0 ? ((player.wins / player.gamesPlayed) * 100).toFixed(1) : '0.0';
-                            const actualValue = (player.totalNet / 100).toFixed(2);
-
-                            return (
-                              <tr key={idx} className="border-b hover:bg-blue-50 transition-colors">
-                                <td className="p-3">
-                                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
-                                    idx === 0 ? 'bg-yellow-400 text-yellow-900' :
-                                    idx === 1 ? 'bg-gray-300 text-gray-700' :
-                                    idx === 2 ? 'bg-orange-400 text-orange-900' :
-                                    'bg-gray-100 text-gray-600'
+                              return (
+                                <tr key={i} className="border-b hover:bg-blue-50">
+                                  <td className="p-3 text-center">
+                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
+                                      i === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                      i === 1 ? 'bg-gray-300 text-gray-700' :
+                                      i === 2 ? 'bg-orange-400 text-orange-900' :
+                                      'bg-gray-100 text-gray-600'
+                                    }`}>
+                                      {i + 1}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-bold">{p.fullName}</div>
+                                    <div className="text-xs text-gray-500">{p.name}</div>
+                                  </td>
+                                  <td className="p-3 text-center">{p.games}</td>
+                                  <td className="p-3 text-center">
+                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
+                                      {p.wins}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
+                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
+                                  <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <span className={`px-2 py-1 rounded font-semibold ${
+                                      parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
+                                      parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
+                                    }`}>
+                                      {winRate}%
+                                    </span>
+                                  </td>
+                                  <td className={`p-3 text-right font-semibold ${
+                                    parseFloat(actualValue) > 0 ? 'text-green-600' :
+                                    parseFloat(actualValue) < 0 ? 'text-red-600' :
+                                    'text-gray-600'
                                   }`}>
-                                    {idx + 1}
-                                  </span>
-                                </td>
-                                <td className="p-3 font-bold text-gray-800">{player.name}</td>
-                                <td className="p-3 text-center text-gray-700">{player.gamesPlayed}</td>
-                                <td className="p-3 text-center">
-                                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
-                                    {player.wins}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right text-gray-700">₹{player.totalBuyIn.toLocaleString()}</td>
-                                <td className="p-3 text-right text-gray-700">₹{player.totalBuyOut.toLocaleString()}</td>
-                                <td className={`p-3 text-right font-bold text-lg ${
-                                  player.totalNet > 0 ? 'text-green-600' :
-                                  player.totalNet < 0 ? 'text-red-600' : 'text-gray-600'
-                                }`}>
-                                  {player.totalNet > 0 ? '+' : ''}₹{player.totalNet.toLocaleString()}
-                                </td>
-                                <td className="p-3 text-center">
-                                  <span className={`px-2 py-1 rounded font-semibold ${
-                                    parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
-                                    parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                                    'bg-red-100 text-red-800'
-                                  }`}>
-                                    {winRate}%
-                                  </span>
-                                </td>
-                                <td className={`p-3 text-right font-semibold ${
-                                  parseFloat(actualValue) > 0 ? 'text-green-600' :
-                                  parseFloat(actualValue) < 0 ? 'text-red-600' : 'text-gray-600'
-                                }`}>
-                                  {parseFloat(actualValue) > 0 ? '+' : ''}₹{parseFloat(actualValue).toLocaleString()}
-                                </td>
-                              </tr>
-                            );
-                          });
+                                    {parseFloat(actualValue) > 0 ? '+' : ''}₹{actualValue}
+                                  </td>
+                                </tr>
+                              );
+                            });
                         })()}
                       </tbody>
                     </table>
                   </div>
                 </div>
 
-                <div className="mb-8 grid md:grid-cols-3 gap-4">
-                  {(() => {
-                    const playerConsolidated = {};
-
-                    games.forEach(game => {
-                      if (game.players && Array.isArray(game.players)) {
-                        game.players.forEach(player => {
-                          const playerKey = player.name.toLowerCase().trim();
-
-                          if (!playerConsolidated[playerKey]) {
-                            playerConsolidated[playerKey] = {
-                              name: player.name,
-                              totalNet: 0
-                            };
-                          }
-
-                          playerConsolidated[playerKey].totalNet += player.net || 0;
-                        });
-                      }
-                    });
-
-                    const players = Object.values(playerConsolidated);
-                    const totalPositive = players.filter(p => p.totalNet > 0).reduce((sum, p) => sum + p.totalNet, 0);
-                    const totalNegative = players.filter(p => p.totalNet < 0).reduce((sum, p) => sum + Math.abs(p.totalNet), 0);
-                    const difference = Math.abs(totalPositive - totalNegative);
-                    const isBalanced = difference < 1;
-
-                    return (
-                      <>
-                        <div className="bg-gradient-to-br from-green-500 to-green-600 p-6 rounded-lg shadow-lg text-white">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-lg font-semibold opacity-90">Total Receivable</h3>
-                            <TrendingUp size={24} />
-                          </div>
-                          <p className="text-3xl font-bold">₹{(totalPositive / 100).toFixed(2)}</p>
-                          <p className="text-xs opacity-75 mt-2">Money to be received</p>
-                        </div>
-
-                        <div className="bg-gradient-to-br from-red-500 to-red-600 p-6 rounded-lg shadow-lg text-white">
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-lg font-semibold opacity-90">Total Payable</h3>
-                            <TrendingDown size={24} />
-                          </div>
-                          <p className="text-3xl font-bold">₹{(totalNegative / 100).toFixed(2)}</p>
-                          <p className="text-xs opacity-75 mt-2">Money to be paid</p>
-                        </div>
-
-                        <div className={`bg-gradient-to-br ${isBalanced ? 'from-blue-500 to-blue-600' : 'from-orange-500 to-orange-600'} p-6 rounded-lg shadow-lg text-white`}>
-                          <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-lg font-semibold opacity-90">Balance Check</h3>
-                            {isBalanced ? <CheckCircle size={24} /> : <AlertCircle size={24} />}
-                          </div>
-                          <p className="text-3xl font-bold">
-                            {isBalanced ? '✓ Balanced' : '⚠ Unbalanced'}
-                          </p>
-                          <p className="text-sm opacity-90 mt-1">
-                            Difference: ₹{(difference / 100).toFixed(2)}
-                          </p>
-                          <p className="text-xs opacity-75 mt-2">
-                            {isBalanced ? 'All accounts match' : 'Check for errors'}
-                          </p>
-                        </div>
-                      </>
-                    );
-                  })()}
-                </div>
-
-                <div className="mb-8 bg-gradient-to-r from-orange-50 to-red-50 p-6 rounded-lg border-2 border-orange-200">
-                  <h2 className="text-2xl font-bold text-gray-800 mb-4">💰 Settlement - Who Pays Whom</h2>
+                <div className="mb-8 bg-orange-50 p-6 rounded-lg">
+                  <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
                   {(() => {
                     const settlements = calculateSettlements();
-
                     if (settlements.length === 0) {
-                      return (
-                        <div className="text-center py-8 text-gray-600">
-                          <p className="text-lg font-semibold">✅ All players are even - No settlements needed!</p>
-                        </div>
-                      );
+                      return <p className="text-center text-gray-600">All even!</p>;
                     }
-
-                    return (
-                      <div className="space-y-3">
-                        {settlements.map((settlement, idx) => (
-                          <div key={idx} className="bg-white p-4 rounded-lg shadow flex items-center justify-between hover:shadow-lg transition-shadow">
-                            <div className="flex items-center gap-4 flex-1">
-                              <div className="text-right">
-                                <p className="text-sm text-gray-600">From</p>
-                                <p className="text-lg font-bold text-red-600">{settlement.from}</p>
-                              </div>
-                              <ArrowRight className="text-gray-400" size={32} />
-                              <div className="text-left">
-                                <p className="text-sm text-gray-600">To</p>
-                                <p className="text-lg font-bold text-green-600">{settlement.to}</p>
-                              </div>
-                            </div>
-                            <div className="text-right ml-6">
-                              <p className="text-sm text-gray-600">Amount</p>
-                              <p className="text-2xl font-bold text-orange-600">₹{settlement.actualValue}</p>
-                            </div>
-                          </div>
-                        ))}
-                        <div className="mt-4 p-4 bg-blue-100 rounded-lg">
-                          <p className="text-sm text-blue-800">
-                            💡 <strong>Total transactions needed:</strong> {settlements.length} (optimized for minimum transfers)
-                          </p>
+                    return settlements.map((s, i) => (
+                      <div key={i} className="bg-white p-4 rounded shadow mb-2 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                          <span className="font-bold text-red-600">{s.from}</span>
+                          <ArrowRight />
+                          <span className="font-bold text-green-600">{s.to}</span>
                         </div>
+                        <span className="text-xl font-bold text-orange-600">₹{s.actualValue}</span>
                       </div>
-                    );
+                    ));
                   })()}
                 </div>
 
-                <h2 className="text-2xl font-bold text-gray-800 mb-4">🎮 Individual Games</h2>
-                <div className="space-y-6">
-                  {games.map((game, index) => (
-                    <div key={index} className="border border-gray-200 rounded-lg p-6 hover:shadow-lg transition-shadow">
-                      <div className="flex justify-between items-start mb-4">
+                <h2 className="text-2xl font-bold mb-4">🎮 Games</h2>
+                <div className="space-y-4">
+                  {games.map((game) => (
+                    <div key={game.id} className="border rounded-lg p-4 bg-gray-50">
+                      <div className="flex justify-between items-start mb-3">
                         <div>
-                          <h3 className="text-lg font-bold text-gray-800">
-                            Game on {game.date}
-                          </h3>
-                          <p className="text-sm text-gray-600 font-mono">{game.gameId}</p>
+                          <p className="font-bold">{game.date}</p>
+                          <p className="text-sm text-gray-600">{game.gameId}</p>
                         </div>
-                        <button
-                          onClick={() => deleteGame(index)}
-                          className="p-2 text-red-600 hover:bg-red-100 rounded transition-colors"
-                          title="Delete game"
-                        >
+                        <button onClick={() => deleteGame(game.id)} className="text-red-600 hover:bg-red-100 p-2 rounded">
                           <Trash2 size={18} />
                         </button>
                       </div>
-
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-                        <div className="bg-blue-50 p-3 rounded">
-                          <p className="text-xs text-gray-600 mb-1">Players</p>
-                          <p className="text-xl font-bold text-blue-700">{game.playerCount}</p>
+                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                        <div className="bg-blue-50 p-2 rounded">
+                          <p className="text-xs text-gray-600">Players</p>
+                          <p className="font-bold">{game.playerCount}</p>
                         </div>
-                        <div className="bg-green-50 p-3 rounded">
-                          <p className="text-xs text-gray-600 mb-1">Winner</p>
-                          <p className="text-lg font-bold text-green-700">{game.winner}</p>
+                        <div className="bg-green-50 p-2 rounded">
+                          <p className="text-xs text-gray-600">Winner</p>
+                          <p className="font-bold text-sm">
+                            {game.winnerFullName || getPlayerFullName(game.winner)}
+                          </p>
+                          <p className="text-xs text-gray-500">{game.winner}</p>
                         </div>
-                        <div className="bg-purple-50 p-3 rounded">
-                          <p className="text-xs text-gray-600 mb-1">Winner Profit</p>
-                          <p className="text-lg font-bold text-purple-700">₹{game.winnerProfit.toLocaleString()}</p>
+                        <div className="bg-purple-50 p-2 rounded">
+                          <p className="text-xs text-gray-600">Profit</p>
+                          <p className="font-bold">₹{game.winnerProfit}</p>
                         </div>
-                        <div className="bg-orange-50 p-3 rounded">
-                          <p className="text-xs text-gray-600 mb-1">Total Pot</p>
-                          <p className="text-lg font-bold text-orange-700">₹{game.totalPot.toLocaleString()}</p>
+                        <div className="bg-orange-50 p-2 rounded">
+                          <p className="text-xs text-gray-600">Total Pot</p>
+                          <p className="font-bold">₹{game.totalPot}</p>
                         </div>
                       </div>
-
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-sm">
-                          <thead>
-                            <tr className="bg-gray-50 border-b">
-                              <th className="p-2 text-left">Player</th>
-                              <th className="p-2 text-right">Buy-In</th>
-                              <th className="p-2 text-right">Buy-Out</th>
-                              <th className="p-2 text-right">Net P/L</th>
-                              <th className="p-2 text-center">Status</th>
+                      <table className="w-full text-sm">
+                        <thead>
+                          <tr className="border-b">
+                            <th className="p-2 text-left">Player</th>
+                            <th className="p-2 text-right">Buy-In</th>
+                            <th className="p-2 text-right">Buy-Out</th>
+                            <th className="p-2 text-right">Net</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {game.players && game.players.map((p, i) => (
+                            <tr key={i} className="border-b">
+                              <td className="p-2">
+                                <div className="font-medium">{p.fullName || getPlayerFullName(p.name)}</div>
+                                <div className="text-xs text-gray-500">{p.name}</div>
+                              </td>
+                              <td className="p-2 text-right">₹{p.buyIn}</td>
+                              <td className="p-2 text-right">₹{p.buyOut}</td>
+                              <td className={`p-2 text-right font-bold ${p.net > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {p.net > 0 ? '+' : ''}₹{p.net}
+                              </td>
                             </tr>
-                          </thead>
-                          <tbody>
-                            {game.players.map((player, pIdx) => (
-                              <tr key={pIdx} className="border-b hover:bg-gray-50">
-                                <td className="p-2 font-medium">{player.name}</td>
-                                <td className="p-2 text-right">₹{player.buyIn.toLocaleString()}</td>
-                                <td className="p-2 text-right">₹{player.buyOut.toLocaleString()}</td>
-                                <td className={`p-2 text-right font-bold ${
-                                  player.net > 0 ? 'text-green-600' : player.net < 0 ? 'text-red-600' : 'text-gray-600'
-                                }`}>
-                                  {player.net > 0 ? '+' : ''}₹{player.net.toLocaleString()}
-                                </td>
-                                <td className="p-2 text-center">
-                                  {player.net > 0 ? (
-                                    <TrendingUp className="inline text-green-600" size={18} />
-                                  ) : player.net < 0 ? (
-                                    <TrendingDown className="inline text-red-600" size={18} />
-                                  ) : (
-                                    <span className="text-gray-400">—</span>
-                                  )}
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   ))}
                 </div>
