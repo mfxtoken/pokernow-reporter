@@ -183,7 +183,7 @@ export default function PokerNowReporter() {
     'sas': 'Simal Shah',
     'mani27': 'Manigandan Manjunathan',
     'gp': 'Gaurav Jain',
-    'pratik': 'Pratik Shah',
+    'pratik': 'Pratik Jain',
     'kd': 'Keval Desai',
     'harshit': 'Harshit Metha',
     'shivang': 'Shivang',

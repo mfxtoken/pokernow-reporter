@@ -10,16 +10,26 @@ class PokerDatabase {
   async init() {
     return new Promise((resolve, reject) => {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
+
       request.onerror = () => reject(request.error);
+
       request.onsuccess = () => {
         this.db = request.result;
+        console.log('Database initialized successfully');
         resolve(this.db);
       };
+
       request.onupgradeneeded = (event) => {
         const db = event.target.result;
+
         if (!db.objectStoreNames.contains('games')) {
-          const store = db.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
+          const store = db.createObjectStore('games', {
+            keyPath: 'id',
+            autoIncrement: true
+          });
           store.createIndex('gameId', 'gameId', { unique: true });
+          store.createIndex('date', 'date', { unique: false });
+          console.log('Database schema created');
         }
       };
     });
@@ -27,6 +37,7 @@ class PokerDatabase {
 
   async saveGame(gameData) {
     return new Promise((resolve, reject) => {
+      // First check if game already exists
       const checkTransaction = this.db.transaction(['games'], 'readonly');
       const checkStore = checkTransaction.objectStore('games');
       const checkIndex = checkStore.index('gameId');
@@ -39,6 +50,7 @@ class PokerDatabase {
           return;
         }
 
+        // Game doesn't exist, add it
         const addTransaction = this.db.transaction(['games'], 'readwrite');
         const addStore = addTransaction.objectStore('games');
 
@@ -62,6 +74,7 @@ class PokerDatabase {
 
       checkRequest.onerror = () => {
         console.error('Check request error, attempting to add anyway');
+        // Try to add anyway
         const addTransaction = this.db.transaction(['games'], 'readwrite');
         const addStore = addTransaction.objectStore('games');
         const addRequest = addStore.add(gameData);
@@ -83,6 +96,7 @@ class PokerDatabase {
     const transaction = this.db.transaction(['games'], 'readonly');
     const store = transaction.objectStore('games');
     const request = store.getAll();
+
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve(request.result);
       request.onerror = () => reject(request.error);
@@ -115,6 +129,7 @@ class PokerDatabase {
     const transaction = this.db.transaction(['games'], 'readwrite');
     const store = transaction.objectStore('games');
     const request = store.delete(id);
+
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
@@ -125,6 +140,7 @@ class PokerDatabase {
     const transaction = this.db.transaction(['games'], 'readwrite');
     const store = transaction.objectStore('games');
     const request = store.clear();
+
     return new Promise((resolve, reject) => {
       request.onsuccess = () => resolve();
       request.onerror = () => reject(request.error);
@@ -147,9 +163,12 @@ class PokerDatabase {
       throw new Error('Invalid backup file format');
     }
 
+    // Clear existing data first
     await this.clearAllData();
 
+    // Import each game
     for (const game of jsonData.games) {
+      // Remove the database ID to let it auto-generate
       const gameToImport = { ...game };
       delete gameToImport.id;
       await this.saveGame(gameToImport);
@@ -159,5 +178,7 @@ class PokerDatabase {
   }
 }
 
+// Create singleton instance
 const db = new PokerDatabase();
+
 export default db;
