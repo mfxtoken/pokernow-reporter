@@ -225,6 +225,7 @@ export default function PokerNowReporter() {
   const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
   const [authLoading, setAuthLoading] = useState(false);
   const [showProfileModal, setShowProfileModal] = useState(false);
+  const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [settlements, setSettlements] = useState({}); // Store cloud settlements
 
   const playerAliases = {
@@ -266,6 +267,20 @@ export default function PokerNowReporter() {
       }
     };
   }, []);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (showProfileDropdown && !event.target.closest('.profile-dropdown-container')) {
+        setShowProfileDropdown(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [showProfileDropdown]);
 
   const initializeApp = async () => {
     try {
@@ -865,27 +880,38 @@ export default function PokerNowReporter() {
 
                 {/* Auth Button */}
                 {user ? (
-                  <div className="relative group">
-                    <button className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 font-semibold transition-colors">
+                  <div className="relative profile-dropdown-container">
+                    <button
+                      onClick={() => setShowProfileDropdown(!showProfileDropdown)}
+                      className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 font-semibold transition-colors"
+                    >
                       <User size={20} />
                       {profile?.player_name || user.email}
                     </button>
-                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 hidden group-hover:block z-10">
-                      <button
-                        onClick={() => setShowProfileModal(true)}
-                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                      >
-                        <Settings size={16} />
-                        Link Profile
-                      </button>
-                      <button
-                        onClick={handleLogout}
-                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                      >
-                        <LogOut size={16} />
-                        Logout
-                      </button>
-                    </div>
+                    {showProfileDropdown && (
+                      <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 z-10">
+                        <button
+                          onClick={() => {
+                            setShowProfileModal(true);
+                            setShowProfileDropdown(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <Settings size={16} />
+                          Link Profile
+                        </button>
+                        <button
+                          onClick={() => {
+                            handleLogout();
+                            setShowProfileDropdown(false);
+                          }}
+                          className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                        >
+                          <LogOut size={16} />
+                          Logout
+                        </button>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <button
