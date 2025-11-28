@@ -496,11 +496,18 @@ export default function PokerNowReporter() {
   };
 
   const parseCSV = (csvText) => {
+    if (!csvText || !csvText.trim()) return [];
+
     const lines = csvText.trim().split('\n');
+    if (lines.length < 2) return []; // Need at least header and one row
+
     const headers = lines[0].split(',').map(h => h.replace(/"/g, '').trim());
     const data = [];
 
     for (let i = 1; i < lines.length; i++) {
+      // Skip empty lines
+      if (!lines[i].trim()) continue;
+
       const values = [];
       let current = '';
       let inQuotes = false;
@@ -528,12 +535,20 @@ export default function PokerNowReporter() {
   };
 
   const analyzeGameData = (csvData) => {
+    if (!csvData || csvData.length === 0) {
+      return { players: [], playerCount: 0 };
+    }
+
     const playerStats = {};
     let totalBuyIn = 0;
     let gameDate = null;
 
     csvData.forEach(row => {
-      const player = row.player_nickname.trim(); // Keep original case
+      if (!row.player_nickname) return; // Skip invalid rows
+
+      const player = row.player_nickname.trim();
+      if (!player) return;
+
       const fullName = getPlayerFullName(player);
       const buyIn = parseFloat(row.buy_in) || 0;
       const buyOut = parseFloat(row.buy_out) || 0;
@@ -544,7 +559,7 @@ export default function PokerNowReporter() {
         gameDate = new Date(sessionStart).toISOString().split('T')[0];
       }
 
-      const playerKey = player.toLowerCase(); // Use lowercase for grouping
+      const playerKey = player.toLowerCase();
 
       if (!playerStats[playerKey]) {
         playerStats[playerKey] = {
@@ -563,6 +578,11 @@ export default function PokerNowReporter() {
     });
 
     const players = Object.values(playerStats).sort((a, b) => b.net - a.net);
+
+    if (players.length === 0) {
+      return { players: [], playerCount: 0 };
+    }
+
     const winner = players[0];
 
     return {
