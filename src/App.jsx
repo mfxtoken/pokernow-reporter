@@ -874,6 +874,92 @@ export default function PokerNowReporter() {
                     );
                   })()}
 
+                  {/* Weekly Activity Chart */}
+                  {(() => {
+                    if (games.length === 0) return null;
+
+                    // Helper to get Monday of the week for a date
+                    const getMonday = (d) => {
+                      const date = new Date(d);
+                      const day = date.getDay();
+                      const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+                      const monday = new Date(date.setDate(diff));
+                      monday.setHours(0, 0, 0, 0);
+                      return monday;
+                    };
+
+                    // Group games by week
+                    const gamesByWeek = {};
+                    games.forEach(game => {
+                      if (!game.date) return;
+                      const monday = getMonday(game.date).toISOString().split('T')[0];
+                      if (!gamesByWeek[monday]) {
+                        gamesByWeek[monday] = [];
+                      }
+                      gamesByWeek[monday].push(game);
+                    });
+
+                    // Get latest week or current week
+                    const weeks = Object.keys(gamesByWeek).sort().reverse();
+                    const currentWeekStart = weeks[0];
+                    const currentWeekGames = gamesByWeek[currentWeekStart] || [];
+
+                    // Initialize daily counts (Mon-Sun)
+                    const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
+                    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+                    currentWeekGames.forEach(game => {
+                      const date = new Date(game.date);
+                      // getDay(): 0=Sun, 1=Mon... 6=Sat
+                      // Map to 0=Mon... 6=Sun
+                      let dayIndex = date.getDay() - 1;
+                      if (dayIndex === -1) dayIndex = 6; // Sunday
+                      dailyCounts[dayIndex]++;
+                    });
+
+                    const maxGames = Math.max(...dailyCounts, 1); // Avoid division by zero
+
+                    return (
+                      <div className="mb-8 bg-white p-6 rounded-lg shadow border border-gray-100">
+                        <div className="flex items-center justify-between mb-6">
+                          <div>
+                            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                              <TrendingUp size={20} className="text-blue-600" />
+                              Weekly Activity
+                            </h2>
+                            <p className="text-sm text-gray-500 mt-1">
+                              Week of {new Date(currentWeekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {new Date(new Date(currentWeekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                            </p>
+                          </div>
+                          <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-700 text-sm font-semibold">
+                            {currentWeekGames.length} Games Played
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-7 gap-2 h-32 items-end">
+                          {dailyCounts.map((count, i) => (
+                            <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
+                              <div className="relative w-full flex justify-center items-end h-full">
+                                <div
+                                  className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
+                                    }`}
+                                  style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '4px' : '4px' }}
+                                >
+                                  {count > 0 && (
+                                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                      {count} game{count !== 1 ? 's' : ''}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              <div className="text-xs font-medium text-gray-500">{days[i]}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm bg-white rounded shadow">
                       <thead>
