@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Download,
   Trash2,
@@ -35,6 +35,7 @@ import {
   getSettlements,
   updateSettlement
 } from './lib/supabase';
+import html2canvas from 'html2canvas';
 
 // IndexedDB Database
 const DB_NAME = 'PokerNowDB';
@@ -229,6 +230,7 @@ export default function PokerNowReporter() {
   const [darkMode, setDarkMode] = useState(() => {
     return localStorage.getItem('darkMode') === 'true';
   });
+  const reportRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('darkMode', darkMode);
@@ -461,6 +463,41 @@ export default function PokerNowReporter() {
       showMessage('error', 'Failed to update settlement: ' + error.message);
     }
   };
+
+  const handleShareReport = async () => {
+    if (!reportRef.current) {
+      showMessage('error', 'Report content not found');
+      return;
+    }
+
+    try {
+      showMessage('info', 'Generating image...');
+
+      const canvas = await html2canvas(reportRef.current, {
+        backgroundColor: darkMode ? '#111827' : '#f9fafb',
+        scale: 2, // Higher quality
+        logging: false,
+        useCORS: true
+      });
+
+      // Convert to blob for better quality
+      canvas.toBlob((blob) => {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.download = `poker-report-${new Date().toISOString().split('T')[0]}.png`;
+        link.href = url;
+        link.click();
+        URL.revokeObjectURL(url);
+
+        showMessage('success', 'Report downloaded!');
+      }, 'image/png');
+
+    } catch (error) {
+      console.error('Share report error:', error);
+      showMessage('error', 'Failed to generate image: ' + error.message);
+    }
+  };
+
 
   // Helper to get all unique player names for the dropdown
   const getAllPlayerNames = () => {
@@ -1267,6 +1304,15 @@ export default function PokerNowReporter() {
               Export
             </button>
             <button
+              onClick={handleShareReport}
+              disabled={games.length === 0}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+              title="Download report as image"
+            >
+              <Download size={18} />
+              Share Report
+            </button>
+            <button
               onClick={clearAllGames}
               disabled={games.length === 0}
               className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
@@ -1282,7 +1328,7 @@ export default function PokerNowReporter() {
             <p className="text-lg">No games yet. Upload CSV files to start!</p>
           </div>
         ) : (
-          <>
+          <div>
             <div className="mb-6 p-4 bg-green-50 rounded-lg border-2 border-green-200">
               <p className="text-lg font-bold text-green-800">✓ {games.length} Games Loaded</p>
             </div>
@@ -1385,330 +1431,334 @@ export default function PokerNowReporter() {
                 );
               })()}
 
-              {/* Player Statistics Dashboard */}
-              {(() => {
-                if (games.length === 0) return null;
+              {/* Shareable Report Content */}
+              <div ref={reportRef} className="bg-gradient-to-b from-gray-50 to-white dark:from-gray-900 dark:to-gray-800 p-8 rounded-xl mb-8">
+                {/* Player Statistics Dashboard */}
+                {(() => {
+                  if (games.length === 0) return null;
 
-                const playerStats = {};
-                games.forEach(game => {
-                  if (game.players) {
-                    game.players.forEach(player => {
-                      const key = player.name.toLowerCase().trim();
-                      const fullName = player.fullName || getPlayerFullName(player.name);
-                      if (!playerStats[key]) {
-                        playerStats[key] = {
-                          name: player.name,
-                          fullName: fullName,
-                          totalNet: 0,
-                          gamesPlayed: 0,
-                          wins: 0,
-                          bestGame: -Infinity,
-                          worstGame: Infinity,
-                          gameHistory: []
-                        };
-                      }
-                      playerStats[key].totalNet += player.net || 0;
-                      playerStats[key].gamesPlayed += 1;
-                      playerStats[key].gameHistory.push(player.net || 0);
-                      if (player.net > playerStats[key].bestGame) {
-                        playerStats[key].bestGame = player.net;
-                      }
-                      if (player.net < playerStats[key].worstGame) {
-                        playerStats[key].worstGame = player.net;
-                      }
-                      if (game.winner.toLowerCase().trim() === key) {
-                        playerStats[key].wins += 1;
-                      }
-                    });
-                  }
-                });
-
-                const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
-
-                return (
-                  <div className="mb-8 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-6 rounded-lg border-2 border-purple-200 dark:border-purple-700">
-                    <h2 className="text-2xl font-bold mb-6 text-purple-900 dark:text-purple-100 flex items-center gap-2">
-                      <Users size={28} />
-                      Player Statistics
-                    </h2>
-
-                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                      {players.map((player, idx) => {
-                        const winRate = ((player.wins / player.gamesPlayed) * 100).toFixed(1);
-                        const avgProfit = (player.totalNet / player.gamesPlayed / 100).toFixed(2);
-                        const isPositive = player.totalNet > 0;
-
-                        return (
-                          <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
-                            <div className="flex items-start justify-between mb-3">
-                              <div className="flex-1">
-                                <h3 className="font-bold text-lg text-gray-900 dark:text-white">{player.fullName}</h3>
-                                <p className="text-xs text-gray-500 dark:text-gray-400">{player.name}</p>
-                              </div>
-                              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl font-bold ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
-                                {player.fullName.charAt(0)}
-                              </div>
-                            </div>
-
-                            <div className="space-y-2">
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Total Profit</span>
-                                <span className={`font-bold text-lg ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                  {isPositive ? '+' : ''}₹{(player.totalNet / 100).toFixed(2)}
-                                </span>
-                              </div>
-
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Games Played</span>
-                                <span className="font-semibold text-gray-900 dark:text-white">{player.gamesPlayed}</span>
-                              </div>
-
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Win Rate</span>
-                                <span className="font-semibold text-blue-600 dark:text-blue-400">{winRate}%</span>
-                              </div>
-
-                              <div className="flex justify-between items-center">
-                                <span className="text-sm text-gray-600 dark:text-gray-400">Avg/Game</span>
-                                <span className={`font-semibold ${parseFloat(avgProfit) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
-                                  {parseFloat(avgProfit) > 0 ? '+' : ''}₹{avgProfit}
-                                </span>
-                              </div>
-
-                              <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
-                                <div className="flex justify-between text-xs">
-                                  <div>
-                                    <div className="text-gray-500 dark:text-gray-400">Best</div>
-                                    <div className="font-semibold text-green-600 dark:text-green-400">+₹{(player.bestGame / 100).toFixed(2)}</div>
-                                  </div>
-                                  <div className="text-right">
-                                    <div className="text-gray-500 dark:text-gray-400">Worst</div>
-                                    <div className="font-semibold text-red-600 dark:text-red-400">₹{(player.worstGame / 100).toFixed(2)}</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              {/* Weekly Activity Chart */}
-              {(() => {
-                if (games.length === 0) return null;
-
-                // Helper to get Monday of the week for a date
-                const getMonday = (d) => {
-                  const date = new Date(d);
-                  const day = date.getDay();
-                  const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-                  const monday = new Date(date.setDate(diff));
-                  monday.setHours(0, 0, 0, 0);
-                  return monday;
-                };
-
-                // Group games by week
-                const gamesByWeek = {};
-                games.forEach(game => {
-                  if (!game.date) return;
-                  const monday = getMonday(game.date).toISOString().split('T')[0];
-                  if (!gamesByWeek[monday]) {
-                    gamesByWeek[monday] = [];
-                  }
-                  gamesByWeek[monday].push(game);
-                });
-
-                // Get latest week or current week
-                const weeks = Object.keys(gamesByWeek).sort().reverse();
-                const currentWeekStart = weeks[0];
-                const currentWeekGames = gamesByWeek[currentWeekStart] || [];
-
-                // Initialize daily counts and games (Mon-Sun)
-                const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
-                const dailyGames = [[], [], [], [], [], [], []];
-                const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-                currentWeekGames.forEach(game => {
-                  const date = new Date(game.date);
-                  // getDay(): 0=Sun, 1=Mon... 6=Sat
-                  // Map to 0=Mon... 6=Sun
-                  let dayIndex = date.getDay() - 1;
-                  if (dayIndex === -1) dayIndex = 6; // Sunday
-                  dailyCounts[dayIndex]++;
-                  dailyGames[dayIndex].push(game);
-                });
-
-                const maxGames = Math.max(...dailyCounts, 1); // Avoid division by zero
-
-                return (
-                  <div className="mb-8 bg-white p-6 rounded-lg shadow border border-gray-100">
-                    <div className="flex items-center justify-between mb-6">
-                      <div>
-                        <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                          <TrendingUp size={20} className="text-blue-600" />
-                          Weekly Activity
-                        </h2>
-                        <p className="text-sm text-gray-500 mt-1">
-                          Week of {new Date(currentWeekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {new Date(new Date(currentWeekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                        </p>
-                      </div>
-                      <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-700 text-sm font-semibold">
-                        {currentWeekGames.length} Games Played
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-7 gap-2 h-32 items-end">
-                      {dailyCounts.map((count, i) => (
-                        <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
-                          <div className="relative w-full flex justify-center items-end h-full">
-                            <div
-                              className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 flex items-end justify-center pb-1 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
-                                }`}
-                              style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '20px' : '4px' }}
-                            >
-                              {count > 0 && (
-                                <span className="text-xs font-bold text-white mb-1">{count}</span>
-                              )}
-                            </div>
-                          </div>
-                          <div className="text-xs font-medium text-gray-500">{days[i]}</div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm bg-white dark:bg-gray-800 rounded shadow">
-                  <thead>
-                    <tr className="bg-blue-600 dark:bg-blue-700 text-white">
-                      <th className="p-3 text-left">Rank</th>
-                      <th className="p-3 text-left">Player</th>
-                      <th className="p-3 text-center">Games</th>
-                      <th className="p-3 text-center">Wins</th>
-                      <th className="p-3 text-right">Total Buy-In</th>
-                      <th className="p-3 text-right">Total Buy-Out</th>
-                      <th className="p-3 text-right">Total Net P/L</th>
-                      <th className="p-3 text-center">Win Rate</th>
-                      <th className="p-3 text-right">Actual Value</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(() => {
-                      const playerStats = {};
-                      games.forEach(game => {
-                        if (game.players) {
-                          game.players.forEach(player => {
-                            const key = player.name.toLowerCase().trim();
-                            const fullName = player.fullName || getPlayerFullName(player.name);
-                            if (!playerStats[key]) {
-                              playerStats[key] = {
-                                name: player.name,
-                                fullName: fullName,
-                                totalBuyIn: 0,
-                                totalBuyOut: 0,
-                                totalNet: 0,
-                                games: 0,
-                                wins: 0
-                              };
-                            }
-                            playerStats[key].totalBuyIn += player.buyIn || 0;
-                            playerStats[key].totalBuyOut += player.buyOut || 0;
-                            playerStats[key].totalNet += player.net || 0;
-                            playerStats[key].games += 1;
-                            if (game.winner.toLowerCase().trim() === key) {
-                              playerStats[key].wins += 1;
-                            }
-                          });
+                  const playerStats = {};
+                  games.forEach(game => {
+                    if (game.players) {
+                      game.players.forEach(player => {
+                        const key = player.name.toLowerCase().trim();
+                        const fullName = player.fullName || getPlayerFullName(player.name);
+                        if (!playerStats[key]) {
+                          playerStats[key] = {
+                            name: player.name,
+                            fullName: fullName,
+                            totalNet: 0,
+                            gamesPlayed: 0,
+                            wins: 0,
+                            bestGame: -Infinity,
+                            worstGame: Infinity,
+                            gameHistory: []
+                          };
+                        }
+                        playerStats[key].totalNet += player.net || 0;
+                        playerStats[key].gamesPlayed += 1;
+                        playerStats[key].gameHistory.push(player.net || 0);
+                        if (player.net > playerStats[key].bestGame) {
+                          playerStats[key].bestGame = player.net;
+                        }
+                        if (player.net < playerStats[key].worstGame) {
+                          playerStats[key].worstGame = player.net;
+                        }
+                        if (game.winner.toLowerCase().trim() === key) {
+                          playerStats[key].wins += 1;
                         }
                       });
+                    }
+                  });
 
-                      // Calculate rounded actual values with adjustment
-                      const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
+                  const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
 
-                      // Calculate actual values and rounding differences
-                      players.forEach(p => {
-                        p.actualValue = p.totalNet / 100; // Convert to rupees
-                        p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
-                        p.roundingDiff = p.actualValue - p.roundedValue; // Difference
-                      });
+                  return (
+                    <div className="mb-8 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-6 rounded-lg border-2 border-purple-200 dark:border-purple-700">
+                      <h2 className="text-2xl font-bold mb-6 text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                        <Users size={28} />
+                        Player Statistics
+                      </h2>
 
-                      // Calculate total rounding difference
-                      const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                        {players.map((player, idx) => {
+                          const winRate = ((player.wins / player.gamesPlayed) * 100).toFixed(1);
+                          const avgProfit = (player.totalNet / player.gamesPlayed / 100).toFixed(2);
+                          const isPositive = player.totalNet > 0;
 
-                      // Adjust the player with largest absolute value to absorb the rounding difference
-                      if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
-                        // Find player with largest absolute net value
-                        const largestPlayer = players.reduce((max, p) =>
-                          Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
-                        );
-                        largestPlayer.roundedValue += Math.round(totalRoundingDiff);
-                      }
-
-                      return players.map((p, i) => {
-                        const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
-
-                        return (
-                          <tr key={i} className="border-b hover:bg-blue-50">
-                            <td className="p-3 text-center">
-                              <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
-                                i === 1 ? 'bg-gray-300 text-gray-700' :
-                                  i === 2 ? 'bg-orange-400 text-orange-900' :
-                                    'bg-gray-100 text-gray-600'
-                                }`}>
-                                {i + 1}
-                              </span>
-                            </td>
-                            <td className="p-3">
-                              <div className="font-bold">{p.fullName}</div>
-                              <div className="text-xs text-gray-500">{p.name}</div>
-                            </td>
-                            <td className="p-3 text-center">{p.games}</td>
-                            <td className="p-3 text-center">
-                              <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
-                                {p.wins}
-                              </span>
-                            </td>
-                            <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
-                            <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
-                            <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                              {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
-                            </td>
-                            <td className="p-3 text-center">
-                              <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
-                                parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                                  'bg-red-100 text-red-800'
-                                }`}>
-                                {winRate}%
-                              </span>
-                            </td>
-                            <td className="p-3 text-right">
-                              <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
-                                p.roundedValue < 0 ? 'text-red-600' :
-                                  'text-gray-600'
-                                }`}>
-                                {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
-                              </div>
-                              {Math.abs(p.roundingDiff) > 0.01 && (
-                                <div className="text-xs text-gray-500">
-                                  (was ₹{p.actualValue.toFixed(2)})
+                          return (
+                            <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
+                              <div className="flex items-start justify-between mb-3">
+                                <div className="flex-1">
+                                  <h3 className="font-bold text-lg text-gray-900 dark:text-white">{player.fullName}</h3>
+                                  <p className="text-xs text-gray-500 dark:text-gray-400">{player.name}</p>
                                 </div>
-                              )}
-                            </td>
-                          </tr>
-                        );
-                      });
-                    })()}
-                  </tbody>
-                </table>
+                                <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl font-bold ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                  {player.fullName.charAt(0)}
+                                </div>
+                              </div>
+
+                              <div className="space-y-2">
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Profit</span>
+                                  <span className={`font-bold text-lg ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {isPositive ? '+' : ''}₹{(player.totalNet / 100).toFixed(2)}
+                                  </span>
+                                </div>
+
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Games Played</span>
+                                  <span className="font-semibold text-gray-900 dark:text-white">{player.gamesPlayed}</span>
+                                </div>
+
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Win Rate</span>
+                                  <span className="font-semibold text-blue-600 dark:text-blue-400">{winRate}%</span>
+                                </div>
+
+                                <div className="flex justify-between items-center">
+                                  <span className="text-sm text-gray-600 dark:text-gray-400">Avg/Game</span>
+                                  <span className={`font-semibold ${parseFloat(avgProfit) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                    {parseFloat(avgProfit) > 0 ? '+' : ''}₹{avgProfit}
+                                  </span>
+                                </div>
+
+                                <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                  <div className="flex justify-between text-xs">
+                                    <div>
+                                      <div className="text-gray-500 dark:text-gray-400">Best</div>
+                                      <div className="font-semibold text-green-600 dark:text-green-400">+₹{(player.bestGame / 100).toFixed(2)}</div>
+                                    </div>
+                                    <div className="text-right">
+                                      <div className="text-gray-500 dark:text-gray-400">Worst</div>
+                                      <div className="font-semibold text-red-600 dark:text-red-400">₹{(player.worstGame / 100).toFixed(2)}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Weekly Activity Chart */}
+                {(() => {
+                  if (games.length === 0) return null;
+
+                  // Helper to get Monday of the week for a date
+                  const getMonday = (d) => {
+                    const date = new Date(d);
+                    const day = date.getDay();
+                    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+                    const monday = new Date(date.setDate(diff));
+                    monday.setHours(0, 0, 0, 0);
+                    return monday;
+                  };
+
+                  // Group games by week
+                  const gamesByWeek = {};
+                  games.forEach(game => {
+                    if (!game.date) return;
+                    const monday = getMonday(game.date).toISOString().split('T')[0];
+                    if (!gamesByWeek[monday]) {
+                      gamesByWeek[monday] = [];
+                    }
+                    gamesByWeek[monday].push(game);
+                  });
+
+                  // Get latest week or current week
+                  const weeks = Object.keys(gamesByWeek).sort().reverse();
+                  const currentWeekStart = weeks[0];
+                  const currentWeekGames = gamesByWeek[currentWeekStart] || [];
+
+                  // Initialize daily counts and games (Mon-Sun)
+                  const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
+                  const dailyGames = [[], [], [], [], [], [], []];
+                  const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+                  currentWeekGames.forEach(game => {
+                    const date = new Date(game.date);
+                    // getDay(): 0=Sun, 1=Mon... 6=Sat
+                    // Map to 0=Mon... 6=Sun
+                    let dayIndex = date.getDay() - 1;
+                    if (dayIndex === -1) dayIndex = 6; // Sunday
+                    dailyCounts[dayIndex]++;
+                    dailyGames[dayIndex].push(game);
+                  });
+
+                  const maxGames = Math.max(...dailyCounts, 1); // Avoid division by zero
+
+                  return (
+                    <div className="mb-8 bg-white p-6 rounded-lg shadow border border-gray-100">
+                      <div className="flex items-center justify-between mb-6">
+                        <div>
+                          <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                            <TrendingUp size={20} className="text-blue-600" />
+                            Weekly Activity
+                          </h2>
+                          <p className="text-sm text-gray-500 mt-1">
+                            Week of {new Date(currentWeekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {new Date(new Date(currentWeekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </p>
+                        </div>
+                        <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-700 text-sm font-semibold">
+                          {currentWeekGames.length} Games Played
+                        </div>
+                      </div>
+
+                      <div className="grid grid-cols-7 gap-2 h-32 items-end">
+                        {dailyCounts.map((count, i) => (
+                          <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
+                            <div className="relative w-full flex justify-center items-end h-full">
+                              <div
+                                className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 flex items-end justify-center pb-1 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
+                                  }`}
+                                style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '20px' : '4px' }}
+                              >
+                                {count > 0 && (
+                                  <span className="text-xs font-bold text-white mb-1">{count}</span>
+                                )}
+                              </div>
+                            </div>
+                            <div className="text-xs font-medium text-gray-500">{days[i]}</div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm bg-white dark:bg-gray-800 rounded shadow">
+                    <thead>
+                      <tr className="bg-blue-600 dark:bg-blue-700 text-white">
+                        <th className="p-3 text-left">Rank</th>
+                        <th className="p-3 text-left">Player</th>
+                        <th className="p-3 text-center">Games</th>
+                        <th className="p-3 text-center">Wins</th>
+                        <th className="p-3 text-right">Total Buy-In</th>
+                        <th className="p-3 text-right">Total Buy-Out</th>
+                        <th className="p-3 text-right">Total Net P/L</th>
+                        <th className="p-3 text-center">Win Rate</th>
+                        <th className="p-3 text-right">Actual Value</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(() => {
+                        const playerStats = {};
+                        games.forEach(game => {
+                          if (game.players) {
+                            game.players.forEach(player => {
+                              const key = player.name.toLowerCase().trim();
+                              const fullName = player.fullName || getPlayerFullName(player.name);
+                              if (!playerStats[key]) {
+                                playerStats[key] = {
+                                  name: player.name,
+                                  fullName: fullName,
+                                  totalBuyIn: 0,
+                                  totalBuyOut: 0,
+                                  totalNet: 0,
+                                  games: 0,
+                                  wins: 0
+                                };
+                              }
+                              playerStats[key].totalBuyIn += player.buyIn || 0;
+                              playerStats[key].totalBuyOut += player.buyOut || 0;
+                              playerStats[key].totalNet += player.net || 0;
+                              playerStats[key].games += 1;
+                              if (game.winner.toLowerCase().trim() === key) {
+                                playerStats[key].wins += 1;
+                              }
+                            });
+                          }
+                        });
+
+                        // Calculate rounded actual values with adjustment
+                        const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
+
+                        // Calculate actual values and rounding differences
+                        players.forEach(p => {
+                          p.actualValue = p.totalNet / 100; // Convert to rupees
+                          p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
+                          p.roundingDiff = p.actualValue - p.roundedValue; // Difference
+                        });
+
+                        // Calculate total rounding difference
+                        const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+
+                        // Adjust the player with largest absolute value to absorb the rounding difference
+                        if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+                          // Find player with largest absolute net value
+                          const largestPlayer = players.reduce((max, p) =>
+                            Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+                          );
+                          largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+                        }
+
+                        return players.map((p, i) => {
+                          const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
+
+                          return (
+                            <tr key={i} className="border-b hover:bg-blue-50">
+                              <td className="p-3 text-center">
+                                <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                  i === 1 ? 'bg-gray-300 text-gray-700' :
+                                    i === 2 ? 'bg-orange-400 text-orange-900' :
+                                      'bg-gray-100 text-gray-600'
+                                  }`}>
+                                  {i + 1}
+                                </span>
+                              </td>
+                              <td className="p-3">
+                                <div className="font-bold">{p.fullName}</div>
+                                <div className="text-xs text-gray-500">{p.name}</div>
+                              </td>
+                              <td className="p-3 text-center">{p.games}</td>
+                              <td className="p-3 text-center">
+                                <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
+                                  {p.wins}
+                                </span>
+                              </td>
+                              <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
+                              <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
+                              <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
+                              </td>
+                              <td className="p-3 text-center">
+                                <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
+                                  parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
+                                    'bg-red-100 text-red-800'
+                                  }`}>
+                                  {winRate}%
+                                </span>
+                              </td>
+                              <td className="p-3 text-right">
+                                <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
+                                  p.roundedValue < 0 ? 'text-red-600' :
+                                    'text-gray-600'
+                                  }`}>
+                                  {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
+                                </div>
+                                {Math.abs(p.roundingDiff) > 0.01 && (
+                                  <div className="text-xs text-gray-500">
+                                    (was ₹{p.actualValue.toFixed(2)})
+                                  </div>
+                                )}
+                              </td>
+                            </tr>
+                          );
+                        });
+                      })()}
+                    </tbody>
+                  </table>
+                </div>
               </div>
             </div>
 
-            <div className="mb-8 bg-orange-50 p-6 rounded-lg">
+            {/* Shareable Report Content End */}
+            <div className="mb-8 bg-orange-50 dark:bg-orange-900/20 p-6 rounded-lg border-2 border-orange-200 dark:border-orange-700">
               <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
               {(() => {
                 const settlements = calculateSettlements();
@@ -1860,10 +1910,10 @@ export default function PokerNowReporter() {
                 </div>
               ))}
             </div>
-          </>
+          </div>
         )}
       </div>
     </div>
-    </div>
+    </div >
   );
 }
