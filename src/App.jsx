@@ -609,6 +609,18 @@ export default function PokerNowReporter() {
 
           console.log('Saving game:', gameData);
           await db.saveGame(gameData);
+
+          // Upload to cloud if connected
+          if (isCloudConnected) {
+            console.log('Uploading to cloud...');
+            const result = await uploadGame(gameData);
+            if (result.status === 'skipped') {
+              console.log('Game already exists in cloud');
+            } else {
+              console.log('Game uploaded to cloud');
+            }
+          }
+
           successCount++;
           console.log('Game saved successfully');
         } catch (error) {
@@ -665,6 +677,48 @@ export default function PokerNowReporter() {
       } catch (error) {
         showMessage('error', 'Clear failed: ' + error.message);
       }
+    }
+  };
+
+  const handleSyncToCloud = async () => {
+    if (!isCloudConnected) {
+      showMessage('error', 'Cloud not connected');
+      return;
+    }
+
+    setSyncing(true);
+    let syncedCount = 0;
+    let skippedCount = 0;
+    let errorCount = 0;
+
+    try {
+      const allGames = await db.getAllGames();
+      for (const game of allGames) {
+        try {
+          const result = await uploadGame(game);
+          if (result.status === 'skipped') {
+            skippedCount++;
+          } else {
+            syncedCount++;
+          }
+        } catch (err) {
+          console.error(`Failed to sync game ${game.gameId}:`, err);
+          errorCount++;
+        }
+      }
+
+      let msg = `Sync complete. Uploaded: ${syncedCount}, Skipped: ${skippedCount}`;
+      if (errorCount > 0) msg += `, Errors: ${errorCount}`;
+
+      showMessage(errorCount > 0 ? 'warning' : 'success', msg);
+
+      // Refresh to ensure everything is in sync
+      loadGames();
+    } catch (error) {
+      console.error('Sync error:', error);
+      showMessage('error', 'Sync failed: ' + error.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -863,12 +917,21 @@ export default function PokerNowReporter() {
                 <p className="mt-2 opacity-90">Track and analyze your poker game performance</p>
               </div>
               <div className="flex gap-3">
-                {/* Cloud Sync Button */}
-                {/* Cloud Status Indicator (Optional: You can keep this if you want to show it's connected, or remove it too. User asked to remove 'setup cloud option'. I will keep a subtle indicator or just remove the button interaction) */}
+                {/* Cloud Status Indicator */}
                 {isCloudConnected && (
-                  <div className="px-4 py-2 rounded-lg flex items-center gap-2 font-semibold text-white/80">
-                    <Cloud size={20} />
-                    <span>Cloud Connected</span>
+                  <div className="flex items-center gap-2">
+                    <div className="px-4 py-2 rounded-lg flex items-center gap-2 font-semibold text-white/80">
+                      <Cloud size={20} />
+                      <span>Cloud Connected</span>
+                    </div>
+                    <button
+                      onClick={handleSyncToCloud}
+                      disabled={syncing}
+                      className="px-3 py-2 bg-blue-500/20 hover:bg-blue-500/30 text-blue-100 rounded-lg text-sm font-medium transition-colors disabled:opacity-50"
+                      title="Sync local games to cloud"
+                    >
+                      {syncing ? 'Syncing...' : 'Sync All'}
+                    </button>
                   </div>
                 )}
 
