@@ -427,10 +427,11 @@ export default function PokerNowReporter() {
       return;
     }
 
-    let newStatus;
-    if (action === 'pay') newStatus = 'pending_approval';
+    let newStatus = action;
+    // Map legacy actions if needed, though we'll switch to direct status selection
+    if (action === 'pay') newStatus = 'pending'; // Default to pending if just 'pay'
     if (action === 'approve') newStatus = 'paid';
-    if (action === 'reject') newStatus = 'rejected';
+    if (action === 'reject') newStatus = 'pending'; // Reset to pending on reject
 
     try {
       await updateSettlement(debtor, creditor, newStatus, amount);
@@ -1431,59 +1432,17 @@ export default function PokerNowReporter() {
                             <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
                               <div className="relative w-full flex justify-center items-end h-full">
                                 <div
-                                  className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
+                                  className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 flex items-end justify-center pb-1 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
                                     }`}
-                                  style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '4px' : '4px' }}
+                                  style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '20px' : '4px' }}
                                 >
                                   {count > 0 && (
-                                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                                      {count} game{count !== 1 ? 's' : ''}
-                                    </div>
+                                    <span className="text-xs font-bold text-white mb-1">{count}</span>
                                   )}
                                 </div>
                               </div>
                               <div className="text-xs font-medium text-gray-500">{days[i]}</div>
                             </div>
-                          ))}
-                        </div>
-
-                        {/* Daily Game Breakdown */}
-                        <div className="mt-8 space-y-6">
-                          {dailyGames.map((games, i) => (
-                            games.length > 0 && (
-                              <div key={i} className="border-t pt-4 first:border-t-0 first:pt-0 border-gray-100">
-                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
-                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
-                                  {days[i]}
-                                </h3>
-                                <div className="grid gap-3 sm:grid-cols-2">
-                                  {games.map((game, gameIndex) => (
-                                    <div key={gameIndex} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center hover:bg-blue-50 transition-colors border border-transparent hover:border-blue-100 group">
-                                      <div className="flex items-center gap-3">
-                                        <div className="w-10 h-10 bg-white text-blue-600 rounded-lg flex items-center justify-center text-xs font-bold shadow-sm border border-gray-100 group-hover:border-blue-200">
-                                          #{game.gameId.slice(-3)}
-                                        </div>
-                                        <div>
-                                          <div className="text-sm font-bold text-gray-900 flex items-center gap-1">
-                                            <Trophy size={12} className="text-yellow-500" />
-                                            {game.winner}
-                                          </div>
-                                          <div className="text-xs text-gray-500 flex items-center gap-2">
-                                            <span className="flex items-center gap-1"><Users size={10} /> {game.playerCount}</span>
-                                            {game.date && <span className="text-gray-300">|</span>}
-                                            {game.date && <span>{new Date(game.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
-                                          </div>
-                                        </div>
-                                      </div>
-                                      <div className="text-right">
-                                        <div className="text-sm font-bold text-green-600">+{(game.winnerProfit / 100).toFixed(2)}</div>
-                                        <div className="text-xs text-gray-500">Pot: {(game.totalPot / 100).toFixed(2)}</div>
-                                      </div>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                            )
                           ))}
                         </div>
                       </div>
@@ -1623,16 +1582,45 @@ export default function PokerNowReporter() {
                     if (settlements.length === 0) {
                       return <p className="text-center text-gray-600">All even!</p>;
                     }
-                    return settlements.map((s, i) => (
-                      <div key={i} className="bg-white p-4 rounded shadow mb-2 flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                          <span className="font-bold text-red-600">{s.from}</span>
-                          <ArrowRight />
-                          <span className="font-bold text-green-600">{s.to}</span>
+                    return settlements.map((s, i) => {
+                      const settlementKey = `${s.from}-${s.to}`;
+                      const currentStatus = settlements[settlementKey]?.status || 'pending';
+
+                      const getStatusColor = (status) => {
+                        switch (status) {
+                          case 'paid': return 'bg-green-100 text-green-800 border-green-200';
+                          case 'adjusted': return 'bg-blue-100 text-blue-800 border-blue-200';
+                          case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
+                          default: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                        }
+                      };
+
+                      return (
+                        <div key={i} className="bg-white p-4 rounded shadow mb-2 flex flex-col sm:flex-row justify-between items-center gap-4">
+                          <div className="flex items-center gap-4 flex-1">
+                            <span className="font-bold text-red-600">{s.from}</span>
+                            <ArrowRight className="text-gray-400" size={20} />
+                            <span className="font-bold text-green-600">{s.to}</span>
+                          </div>
+
+                          <div className="flex items-center gap-4">
+                            <span className="text-xl font-bold text-orange-600">₹{s.actualValue}</span>
+
+                            <select
+                              value={currentStatus}
+                              onChange={(e) => handleSettlementAction(s.from, s.to, s.amount, e.target.value)}
+                              className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(currentStatus)}`}
+                              disabled={!isCloudConnected}
+                            >
+                              <option value="pending">Pending</option>
+                              <option value="paid">Paid</option>
+                              <option value="adjusted">Adjusted</option>
+                              <option value="adjusted_offline">Adjusted (Offline)</option>
+                            </select>
+                          </div>
                         </div>
-                        <span className="text-xl font-bold text-orange-600">₹{s.actualValue}</span>
-                      </div>
-                    ));
+                      );
+                    });
                   })()}
                 </div>
 
