@@ -800,12 +800,30 @@ export default function PokerNowReporter() {
                     });
 
                     const players = Object.values(playerStats);
+
+                    // Calculate rounded values with adjustment
+                    players.forEach(p => {
+                      p.actualValue = p.totalNet / 100;
+                      p.roundedValue = Math.round(p.actualValue);
+                      p.roundingDiff = p.actualValue - p.roundedValue;
+                    });
+
+                    // Calculate total rounding difference and adjust
+                    const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+                    if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+                      const largestPlayer = players.reduce((max, p) =>
+                        Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+                      );
+                      largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+                    }
+
+                    // Calculate totals using rounded values
                     const totalReceivable = players
-                      .filter(p => p.totalNet > 0)
-                      .reduce((sum, p) => sum + p.totalNet, 0);
+                      .filter(p => p.roundedValue > 0)
+                      .reduce((sum, p) => sum + p.roundedValue, 0);
                     const totalPayable = players
-                      .filter(p => p.totalNet < 0)
-                      .reduce((sum, p) => sum + Math.abs(p.totalNet), 0);
+                      .filter(p => p.roundedValue < 0)
+                      .reduce((sum, p) => sum + Math.abs(p.roundedValue), 0);
                     const balance = totalReceivable - totalPayable;
 
                     return (
@@ -815,7 +833,7 @@ export default function PokerNowReporter() {
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-green-100 text-sm font-medium mb-1">Total Receivable</p>
-                              <p className="text-3xl font-bold">₹{(totalReceivable / 100).toFixed(2)}</p>
+                              <p className="text-3xl font-bold">₹{totalReceivable}</p>
                               <p className="text-green-100 text-xs mt-1">Amount to be received</p>
                             </div>
                             <TrendingUp size={48} className="opacity-50" />
@@ -827,7 +845,7 @@ export default function PokerNowReporter() {
                           <div className="flex items-center justify-between">
                             <div>
                               <p className="text-red-100 text-sm font-medium mb-1">Total Payable</p>
-                              <p className="text-3xl font-bold">₹{(totalPayable / 100).toFixed(2)}</p>
+                              <p className="text-3xl font-bold">₹{totalPayable}</p>
                               <p className="text-red-100 text-xs mt-1">Amount to be paid</p>
                             </div>
                             <TrendingDown size={48} className="opacity-50" />
@@ -842,7 +860,7 @@ export default function PokerNowReporter() {
                             <div>
                               <p className="text-white text-opacity-90 text-sm font-medium mb-1">Balance Check</p>
                               <p className="text-3xl font-bold">
-                                {Math.abs(balance) < 1 ? '✓ Balanced' : `₹${Math.abs(balance / 100).toFixed(2)}`}
+                                {Math.abs(balance) < 1 ? '✓ Balanced' : `₹${Math.abs(balance)}`}
                               </p>
                               <p className="text-white text-opacity-90 text-xs mt-1">
                                 {Math.abs(balance) < 1 ? 'All settlements match' :
@@ -900,55 +918,82 @@ export default function PokerNowReporter() {
                               });
                             }
                           });
-                          return Object.values(playerStats)
-                            .sort((a, b) => b.totalNet - a.totalNet)
-                            .map((p, i) => {
-                              const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
-                              const actualValue = (p.totalNet / 100).toFixed(2);
 
-                              return (
-                                <tr key={i} className="border-b hover:bg-blue-50">
-                                  <td className="p-3 text-center">
-                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
-                                      i === 1 ? 'bg-gray-300 text-gray-700' :
-                                        i === 2 ? 'bg-orange-400 text-orange-900' :
-                                          'bg-gray-100 text-gray-600'
-                                      }`}>
-                                      {i + 1}
-                                    </span>
-                                  </td>
-                                  <td className="p-3">
-                                    <div className="font-bold">{p.fullName}</div>
-                                    <div className="text-xs text-gray-500">{p.name}</div>
-                                  </td>
-                                  <td className="p-3 text-center">{p.games}</td>
-                                  <td className="p-3 text-center">
-                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
-                                      {p.wins}
-                                    </span>
-                                  </td>
-                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
-                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
-                                  <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
-                                  </td>
-                                  <td className="p-3 text-center">
-                                    <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
-                                      parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                                        'bg-red-100 text-red-800'
-                                      }`}>
-                                      {winRate}%
-                                    </span>
-                                  </td>
-                                  <td className={`p-3 text-right font-semibold ${parseFloat(actualValue) > 0 ? 'text-green-600' :
-                                    parseFloat(actualValue) < 0 ? 'text-red-600' :
+                          // Calculate rounded actual values with adjustment
+                          const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
+
+                          // Calculate actual values and rounding differences
+                          players.forEach(p => {
+                            p.actualValue = p.totalNet / 100; // Convert to rupees
+                            p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
+                            p.roundingDiff = p.actualValue - p.roundedValue; // Difference
+                          });
+
+                          // Calculate total rounding difference
+                          const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+
+                          // Adjust the player with largest absolute value to absorb the rounding difference
+                          if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+                            // Find player with largest absolute net value
+                            const largestPlayer = players.reduce((max, p) =>
+                              Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+                            );
+                            largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+                          }
+
+                          return players.map((p, i) => {
+                            const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
+
+                            return (
+                              <tr key={i} className="border-b hover:bg-blue-50">
+                                <td className="p-3 text-center">
+                                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                    i === 1 ? 'bg-gray-300 text-gray-700' :
+                                      i === 2 ? 'bg-orange-400 text-orange-900' :
+                                        'bg-gray-100 text-gray-600'
+                                    }`}>
+                                    {i + 1}
+                                  </span>
+                                </td>
+                                <td className="p-3">
+                                  <div className="font-bold">{p.fullName}</div>
+                                  <div className="text-xs text-gray-500">{p.name}</div>
+                                </td>
+                                <td className="p-3 text-center">{p.games}</td>
+                                <td className="p-3 text-center">
+                                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
+                                    {p.wins}
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
+                                <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
+                                <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
+                                </td>
+                                <td className="p-3 text-center">
+                                  <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
+                                    parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
+                                      'bg-red-100 text-red-800'
+                                    }`}>
+                                    {winRate}%
+                                  </span>
+                                </td>
+                                <td className="p-3 text-right">
+                                  <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
+                                    p.roundedValue < 0 ? 'text-red-600' :
                                       'text-gray-600'
                                     }`}>
-                                    {parseFloat(actualValue) > 0 ? '+' : ''}₹{actualValue}
-                                  </td>
-                                </tr>
-                              );
-                            });
+                                    {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
+                                  </div>
+                                  {Math.abs(p.roundingDiff) > 0.01 && (
+                                    <div className="text-xs text-gray-500">
+                                      (was ₹{p.actualValue.toFixed(2)})
+                                    </div>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          });
                         })()}
                       </tbody>
                     </table>
