@@ -8,11 +8,6 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 -- =====================================================
 -- PROFILES TABLE
 -- =====================================================
--- Drop existing policies first to avoid conflicts
-DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
-DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
-
 -- Create profiles table if it doesn't exist
 CREATE TABLE IF NOT EXISTS profiles (
   id UUID REFERENCES auth.users(id) ON DELETE CASCADE PRIMARY KEY,
@@ -23,6 +18,11 @@ CREATE TABLE IF NOT EXISTS profiles (
 
 -- Enable Row Level Security
 ALTER TABLE profiles ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies first to avoid conflicts (now that table exists)
+DROP POLICY IF EXISTS "Users can view their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can update their own profile" ON profiles;
+DROP POLICY IF EXISTS "Users can insert their own profile" ON profiles;
 
 -- Create policies for profiles (users can manage their own profile)
 CREATE POLICY "Users can view their own profile"
@@ -40,11 +40,6 @@ CREATE POLICY "Users can insert their own profile"
 -- =====================================================
 -- GAMES TABLE
 -- =====================================================
--- Drop existing policies first
-DROP POLICY IF EXISTS "Authenticated users can view games" ON games;
-DROP POLICY IF EXISTS "Authenticated users can insert games" ON games;
-DROP POLICY IF EXISTS "Authenticated users can update games" ON games;
-
 -- Create games table if it doesn't exist
 CREATE TABLE IF NOT EXISTS games (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -61,6 +56,11 @@ CREATE TABLE IF NOT EXISTS games (
 
 -- Enable Row Level Security
 ALTER TABLE games ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies first (now that table exists)
+DROP POLICY IF EXISTS "Authenticated users can view games" ON games;
+DROP POLICY IF EXISTS "Authenticated users can insert games" ON games;
+DROP POLICY IF EXISTS "Authenticated users can update games" ON games;
 
 -- Create policies for games (allow all authenticated users to read/write)
 CREATE POLICY "Authenticated users can view games"
@@ -81,11 +81,6 @@ CREATE POLICY "Authenticated users can update games"
 -- =====================================================
 -- SETTLEMENTS TABLE
 -- =====================================================
--- Drop existing policies first
-DROP POLICY IF EXISTS "Authenticated users can view settlements" ON settlements;
-DROP POLICY IF EXISTS "Authenticated users can insert settlements" ON settlements;
-DROP POLICY IF EXISTS "Authenticated users can update settlements" ON settlements;
-
 -- Create settlements table if it doesn't exist
 CREATE TABLE IF NOT EXISTS settlements (
   id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
@@ -100,6 +95,11 @@ CREATE TABLE IF NOT EXISTS settlements (
 
 -- Enable Row Level Security
 ALTER TABLE settlements ENABLE ROW LEVEL SECURITY;
+
+-- Drop existing policies first (now that table exists)
+DROP POLICY IF EXISTS "Authenticated users can view settlements" ON settlements;
+DROP POLICY IF EXISTS "Authenticated users can insert settlements" ON settlements;
+DROP POLICY IF EXISTS "Authenticated users can update settlements" ON settlements;
 
 -- Create policies for settlements (allow all authenticated users to read/write)
 CREATE POLICY "Authenticated users can view settlements"
