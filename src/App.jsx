@@ -22,7 +22,8 @@ import {
   Sun,
   RotateCcw, // Added for potential future use or if it was intended
   Check, // Added for potential future use or if it was intended
-  X // Added for potential future use or if it was intended
+  X, // Added for potential future use or if it was intended
+  XCircle // Added for Clear Cloud button
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
 import {
@@ -38,7 +39,8 @@ import {
   onAuthStateChange,
   getSettlements,
   updateSettlement,
-  removeDuplicateGames
+  removeDuplicateGames,
+  clearAllCloudGames
 } from './lib/supabase';
 
 // IndexedDB Database
@@ -497,6 +499,37 @@ export default function PokerNowReporter() {
     } catch (error) {
       console.error('Error removing duplicates:', error);
       showMessage('error', 'Failed to remove duplicates: ' + error.message);
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const handleClearCloud = async () => {
+    if (!isCloudConnected) {
+      showMessage('error', 'Please connect to Cloud Database first');
+      return;
+    }
+
+    if (!confirm('⚠️ DANGER: Are you sure you want to DELETE ALL GAMES from the Cloud Database?')) {
+      return;
+    }
+
+    if (!confirm('This action cannot be undone. All cloud data will be lost. Are you absolutely sure?')) {
+      return;
+    }
+
+    setSyncing(true);
+    try {
+      await clearAllCloudGames();
+      showMessage('success', 'Cloud database cleared successfully!');
+      // Optionally clear local games too? Or just sync?
+      // If we sync now, it might re-upload local games if we don't clear them.
+      // But usually "Clear Cloud" means wipe the server.
+      // If the user wants to wipe everything, they should clear local too.
+      // For now, just clear cloud.
+    } catch (error) {
+      console.error('Error clearing cloud:', error);
+      showMessage('error', 'Failed to clear cloud: ' + error.message);
     } finally {
       setSyncing(false);
     }
@@ -1081,6 +1114,14 @@ export default function PokerNowReporter() {
                       title="Remove duplicate games from cloud"
                     >
                       <Trash2 size={18} />
+                    </button>
+                    <button
+                      onClick={handleClearCloud}
+                      disabled={syncing}
+                      className="px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-medium transition-colors disabled:opacity-50 ml-2"
+                      title="DANGER: Clear ALL games from cloud"
+                    >
+                      <XCircle size={18} />
                     </button>
                   </div>
                 )}

@@ -272,3 +272,16 @@ export const removeDuplicateGames = async () => {
 
     return { count: duplicates.length };
 };
+
+export const clearAllCloudGames = async () => {
+    const client = getSupabase();
+    if (!client) throw new Error('Supabase not configured');
+
+    const { error } = await client
+        .from('games')
+        .delete()
+        .neq('id', '00000000-0000-0000-0000-000000000000'); // Delete all rows (id is never all zeros)
+
+    if (error) throw error;
+    return true;
+};
