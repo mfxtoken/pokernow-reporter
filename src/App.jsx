@@ -322,7 +322,11 @@ export default function PokerNowReporter() {
           // Convert cloud settlements array to object keyed by debtor-creditor
           const settlementsMap = {};
           cloudSettlements.forEach(s => {
-            settlementsMap[`${s.debtor}-${s.creditor}`] = s;
+            // Ensure actualAmount is included if available, or default to amount
+            settlementsMap[`${s.debtor}-${s.creditor}`] = {
+              ...s,
+              actualAmount: s.actualAmount !== undefined ? s.actualAmount : s.amount
+            };
           });
           setSettlements(settlementsMap);
 
@@ -1763,7 +1767,10 @@ export default function PokerNowReporter() {
                             <span className="font-bold text-red-600 dark:text-red-400">{s.from}</span>
                             <ArrowRight className="text-gray-400 dark:text-gray-500" size={20} />
                             <span className="font-bold text-green-600 dark:text-green-400">{s.to}</span>
-                            <span className="ml-4 text-2xl font-bold text-orange-600 dark:text-orange-400">₹{s.amount}</span>
+                            <div className="ml-4">
+                              <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">₹{s.amount}</div>
+                              <div className="text-xs text-gray-500 dark:text-gray-400">Actual: ₹{s.actualAmount.toFixed(2)}</div>
+                            </div>
                           </div>
 
                           <div className="flex items-center gap-3 flex-wrap justify-end">
