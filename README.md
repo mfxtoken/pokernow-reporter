@@ -24,12 +24,77 @@ cd pokernow-reporter
 # Install dependencies
 npm install
 
+# Configure Supabase (optional - for cloud sync and auth)
+cp .env.example .env
+# Edit .env and add your Supabase credentials
+
 # Run development server
 npm run dev
 
 # Build for production
 npm run build
 ```
+
+## Supabase Configuration (Optional)
+
+For cloud sync, authentication, and settlement verification features, you need to set up Supabase:
+
+### 1. Create Supabase Project
+1. Go to [supabase.com](https://supabase.com) and create a free account
+2. Create a new project
+3. Note your project URL and anon key
+
+### 2. Run Database Schema
+Execute this SQL in your Supabase SQL Editor:
+
+```sql
+-- Profiles table
+create table profiles (
+  id uuid references auth.users primary key,
+  player_name text,
+  updated_at timestamp with time zone default now()
+);
+
+-- Settlements table
+create table settlements (
+  id uuid default gen_random_uuid() primary key,
+  debtor text not null,
+  creditor text not null,
+  amount numeric,
+  status text default 'pending',
+  updated_at timestamp with time zone default now(),
+  unique(debtor, creditor)
+);
+
+-- Games table
+create table games (
+  id uuid default gen_random_uuid() primary key,
+  game_id text unique not null,
+  date text,
+  total_pot numeric,
+  winner text,
+  winner_profit numeric,
+  player_count integer,
+  players jsonb,
+  created_at timestamp with time zone default now()
+);
+```
+
+### 3. Configure Environment Variables
+
+**Option A: Environment Variables (Recommended for deployment)**
+```bash
+# Edit .env file
+VITE_SUPABASE_URL=https://your-project.supabase.co
+VITE_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+**Option B: UI Setup (Alternative)**
+- Click "Setup Cloud" button in the app
+- Enter your Supabase URL and Anon Key
+- Credentials will be saved in browser localStorage
+
+> **Note:** Environment variables take priority over localStorage credentials.
 
 ## Usage
 
