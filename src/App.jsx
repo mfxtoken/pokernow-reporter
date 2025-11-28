@@ -1338,6 +1338,14 @@ export default function PokerNowReporter() {
                           const avgProfit = (player.totalNet / player.gamesPlayed).toFixed(0);
                           const isPositive = player.totalNet >= 0;
 
+                          // Calculate running balance
+                          let runningBalance = 0;
+                          const balanceProgression = player.gameHistory.map(net => {
+                            runningBalance += net;
+                            return runningBalance;
+                          });
+                          const finalBalance = runningBalance;
+
                           return (
                             <div
                               key={idx}
@@ -1355,6 +1363,17 @@ export default function PokerNowReporter() {
                               </div>
 
                               <div className="space-y-2">
+                                {/* Bankroll Balance */}
+                                <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+                                  <div className="text-xs text-purple-600 dark:text-purple-400 font-semibold mb-1">💰 Bankroll Balance</div>
+                                  <div className={`text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {finalBalance >= 0 ? '+' : ''}₹{finalBalance}
+                                  </div>
+                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                    Cumulative across {player.gamesPlayed} sessions
+                                  </div>
+                                </div>
+
                                 <div className="flex justify-between items-center">
                                   <span className="text-sm text-gray-600 dark:text-gray-400">Total Profit:</span>
                                   <span className={`font-bold text-lg ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
@@ -1709,8 +1728,8 @@ export default function PokerNowReporter() {
                   </div>
                 </div>
 
-                <div className="mb-8 bg-orange-50 p-6 rounded-lg">
-                  <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
+                <div className="mb-8 bg-orange-50 dark:bg-orange-900/20 p-6 rounded-lg border-2 border-orange-200 dark:border-orange-700">
+                  <h2 className="text-2xl font-bold mb-4 dark:text-white">💰 Settlements</h2>
                   {(() => {
                     const settlements = calculateSettlements();
                     if (settlements.length === 0) {
