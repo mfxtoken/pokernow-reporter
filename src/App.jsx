@@ -310,14 +310,17 @@ export default function PokerNowReporter() {
 
   const loadGames = async () => {
     try {
+      console.log('🔍 Loading games from IndexedDB...');
       const dbGames = await db.getAllGames();
       console.log('✓ Loaded games from DB:', dbGames.length);
 
       // If cloud is connected, fetch and merge
       if (isCloudConnected) {
         try {
+          console.log('☁️ Fetching from cloud...');
           const cloudGames = await fetchAllGames();
           const cloudSettlements = await getSettlements();
+          console.log('✓ Cloud games:', cloudGames.length);
 
           // Convert cloud settlements array to object keyed by debtor-creditor
           const settlementsMap = {};
@@ -338,24 +341,32 @@ export default function PokerNowReporter() {
             }
           });
           setGames(mergedGames);
+          console.log('✓ Total games after merge:', mergedGames.length);
 
           if (mergedGames.length > dbGames.length) {
             showMessage('success', `Synced ${mergedGames.length - dbGames.length} games from cloud`);
+          } else if (mergedGames.length > 0) {
+            showMessage('success', `Loaded ${mergedGames.length} games`);
           }
         } catch (cloudError) {
-          console.error('Cloud fetch failed:', cloudError);
+          console.error('❌ Cloud fetch failed:', cloudError);
           setGames(dbGames);
+          if (dbGames.length > 0) {
+            showMessage('info', `Loaded ${dbGames.length} games from local database`);
+          }
         }
       } else {
         setGames(dbGames);
-      }
-
-      if (dbGames.length > 0) {
-        showMessage('success', `Database loaded: ${dbGames.length} games`);
+        if (dbGames.length > 0) {
+          console.log('✓ Using local games:', dbGames.length);
+          showMessage('success', `Loaded ${dbGames.length} games from local database`);
+        } else {
+          console.log('ℹ️ No games in database');
+        }
       }
     } catch (error) {
-      console.error('Error loading games:', error);
-      showMessage('error', 'Failed to load games');
+      console.error('❌ Error loading games:', error);
+      showMessage('error', 'Failed to load games: ' + error.message);
     }
   };
 
