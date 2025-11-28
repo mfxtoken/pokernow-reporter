@@ -906,7 +906,7 @@ export default function PokerNowReporter() {
         from: debtor.fullName,
         to: creditor.fullName,
         amount: amount,
-        actualValue: (amount / 100).toFixed(2)
+        actualAmount: amount / 100
       });
 
       creditor.totalNet -= amount;
