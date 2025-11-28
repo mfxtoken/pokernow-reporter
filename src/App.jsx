@@ -1392,8 +1392,9 @@ export default function PokerNowReporter() {
                     const currentWeekStart = weeks[0];
                     const currentWeekGames = gamesByWeek[currentWeekStart] || [];
 
-                    // Initialize daily counts (Mon-Sun)
+                    // Initialize daily counts and games (Mon-Sun)
                     const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
+                    const dailyGames = [[], [], [], [], [], [], []];
                     const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
 
                     currentWeekGames.forEach(game => {
@@ -1403,6 +1404,7 @@ export default function PokerNowReporter() {
                       let dayIndex = date.getDay() - 1;
                       if (dayIndex === -1) dayIndex = 6; // Sunday
                       dailyCounts[dayIndex]++;
+                      dailyGames[dayIndex].push(game);
                     });
 
                     const maxGames = Math.max(...dailyCounts, 1); // Avoid division by zero
@@ -1442,6 +1444,46 @@ export default function PokerNowReporter() {
                               </div>
                               <div className="text-xs font-medium text-gray-500">{days[i]}</div>
                             </div>
+                          ))}
+                        </div>
+
+                        {/* Daily Game Breakdown */}
+                        <div className="mt-8 space-y-6">
+                          {dailyGames.map((games, i) => (
+                            games.length > 0 && (
+                              <div key={i} className="border-t pt-4 first:border-t-0 first:pt-0 border-gray-100">
+                                <h3 className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                  <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+                                  {days[i]}
+                                </h3>
+                                <div className="grid gap-3 sm:grid-cols-2">
+                                  {games.map((game, gameIndex) => (
+                                    <div key={gameIndex} className="bg-gray-50 p-3 rounded-lg flex justify-between items-center hover:bg-blue-50 transition-colors border border-transparent hover:border-blue-100 group">
+                                      <div className="flex items-center gap-3">
+                                        <div className="w-10 h-10 bg-white text-blue-600 rounded-lg flex items-center justify-center text-xs font-bold shadow-sm border border-gray-100 group-hover:border-blue-200">
+                                          #{game.gameId.slice(-3)}
+                                        </div>
+                                        <div>
+                                          <div className="text-sm font-bold text-gray-900 flex items-center gap-1">
+                                            <Trophy size={12} className="text-yellow-500" />
+                                            {game.winner}
+                                          </div>
+                                          <div className="text-xs text-gray-500 flex items-center gap-2">
+                                            <span className="flex items-center gap-1"><Users size={10} /> {game.playerCount}</span>
+                                            {game.date && <span className="text-gray-300">|</span>}
+                                            {game.date && <span>{new Date(game.date).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>}
+                                          </div>
+                                        </div>
+                                      </div>
+                                      <div className="text-right">
+                                        <div className="text-sm font-bold text-green-600">+{(game.winnerProfit / 100).toFixed(2)}</div>
+                                        <div className="text-xs text-gray-500">Pot: {(game.totalPot / 100).toFixed(2)}</div>
+                                      </div>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            )
                           ))}
                         </div>
                       </div>
