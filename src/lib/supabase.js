@@ -45,7 +45,9 @@ export const clearCredentials = () => {
 };
 
 export const hasCredentials = () => {
-    return !!(localStorage.getItem('supabase_url') && localStorage.getItem('supabase_key'));
+    const envUrl = import.meta.env.VITE_SUPABASE_URL;
+    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+    return !!((envUrl && envKey) || (localStorage.getItem('supabase_url') && localStorage.getItem('supabase_key')));
 };
 
 // Auth Operations

@@ -20,11 +20,9 @@ import {
   Lock
 } from 'lucide-react';
 import {
-  saveCredentials,
   hasCredentials,
   uploadGame,
   fetchAllGames,
-  clearCredentials,
   signIn,
   signUp,
   signOut,
@@ -214,7 +212,6 @@ export default function PokerNowReporter() {
   const [backupData, setBackupData] = useState('');
 
   // Cloud Sync State
-  const [showCloudModal, setShowCloudModal] = useState(false);
   const [isCloudConnected, setIsCloudConnected] = useState(hasCredentials());
   const [syncing, setSyncing] = useState(false);
 
@@ -867,16 +864,13 @@ export default function PokerNowReporter() {
               </div>
               <div className="flex gap-3">
                 {/* Cloud Sync Button */}
-                <button
-                  onClick={() => setShowCloudModal(true)}
-                  className={`px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-colors ${isCloudConnected
-                    ? 'bg-blue-500 hover:bg-blue-600'
-                    : 'bg-white/20 hover:bg-white/30'
-                    }`}
-                >
-                  <Cloud size={20} />
-                  {isCloudConnected ? 'Cloud Connected' : 'Setup Cloud'}
-                </button>
+                {/* Cloud Status Indicator (Optional: You can keep this if you want to show it's connected, or remove it too. User asked to remove 'setup cloud option'. I will keep a subtle indicator or just remove the button interaction) */}
+                {isCloudConnected && (
+                  <div className="px-4 py-2 rounded-lg flex items-center gap-2 font-semibold text-white/80">
+                    <Cloud size={20} />
+                    <span>Cloud Connected</span>
+                  </div>
+                )}
 
                 {/* Auth Button */}
                 {user ? (
@@ -1037,80 +1031,7 @@ export default function PokerNowReporter() {
               </div>
             )}
 
-            {/* Cloud Setup Modal */}
-            {showCloudModal && (
-              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-lg max-w-md w-full p-6">
-                  <h2 className="text-2xl font-bold mb-4">Cloud Database Setup</h2>
-                  <p className="text-sm text-gray-600 mb-4">
-                    Enter your Supabase credentials to enable cloud sync and settlement verification.
-                  </p>
-                  <form
-                    onSubmit={(e) => {
-                      e.preventDefault();
-                      const formData = new FormData(e.target);
-                      const url = formData.get('url');
-                      const key = formData.get('key');
-                      saveCredentials(url, key);
-                      setIsCloudConnected(true);
-                      setShowCloudModal(false);
-                      showMessage('success', 'Cloud connected!');
-                      loadGames(); // Reload to fetch cloud data
-                    }}
-                    className="space-y-4"
-                  >
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Supabase URL</label>
-                      <input
-                        type="url"
-                        name="url"
-                        required
-                        placeholder="https://your-project.supabase.co"
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium mb-1">Supabase Anon Key</label>
-                      <input
-                        type="text"
-                        name="key"
-                        required
-                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        type="submit"
-                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
-                      >
-                        Connect
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setShowCloudModal(false)}
-                        className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </form>
-                  {isCloudConnected && (
-                    <button
-                      onClick={() => {
-                        clearCredentials();
-                        setIsCloudConnected(false);
-                        setShowCloudModal(false);
-                        showMessage('info', 'Cloud disconnected');
-                      }}
-                      className="mt-4 text-sm text-red-600 hover:underline"
-                    >
-                      Disconnect Cloud
-                    </button>
-                  )}
-                </div>
-              </div>
-            )}
+
 
             {/* Profile Linking Modal */}
             {showProfileModal && (

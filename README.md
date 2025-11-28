@@ -70,12 +70,7 @@ VITE_SUPABASE_URL=https://your-project.supabase.co
 VITE_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-**Option B: UI Setup (Alternative)**
-- Click "Setup Cloud" button in the app
-- Enter your Supabase URL and Anon Key
-- Credentials will be saved in browser localStorage
 
-> **Note:** Environment variables take priority over localStorage credentials.
 
 ## Usage
 
