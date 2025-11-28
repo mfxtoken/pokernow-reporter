@@ -45,40 +45,21 @@ For cloud sync, authentication, and settlement verification features, you need t
 3. Note your project URL and anon key
 
 ### 2. Run Database Schema
-Execute this SQL in your Supabase SQL Editor:
 
-```sql
--- Profiles table
-create table profiles (
-  id uuid references auth.users primary key,
-  player_name text,
-  updated_at timestamp with time zone default now()
-);
+**IMPORTANT**: Use the fixed schema file to avoid profile linking errors.
 
--- Settlements table
-create table settlements (
-  id uuid default gen_random_uuid() primary key,
-  debtor text not null,
-  creditor text not null,
-  amount numeric,
-  status text default 'pending',
-  updated_at timestamp with time zone default now(),
-  unique(debtor, creditor)
-);
+1. Open your Supabase project dashboard
+2. Go to **SQL Editor**
+3. Copy the contents of `supabase-schema-fixed.sql` from this repository
+4. Paste and run the SQL script
+5. Verify the success message appears
 
--- Games table
-create table games (
-  id uuid default gen_random_uuid() primary key,
-  game_id text unique not null,
-  date text,
-  total_pot numeric,
-  winner text,
-  winner_profit numeric,
-  player_count integer,
-  players jsonb,
-  created_at timestamp with time zone default now()
-);
-```
+The schema will create:
+- `profiles` table - Links users to player names
+- `games` table - Stores poker game data
+- `settlements` table - Tracks settlement verification
+- Row Level Security (RLS) policies for data protection
+- Indexes for better performance
 
 ### 3. Configure Environment Variables
 
@@ -171,6 +152,28 @@ If you see "Supabase not configured" in your deployed app:
 2. Click on **Environment Variables**
 3. Check if `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are added
 4. If missing, add them and redeploy (Go to Deployments -> Redeploy)
+
+## Troubleshooting
+
+### "Failed to Choose Public Profile" Error
+
+If you get this error when trying to link your profile:
+
+1. **Run the fixed schema**: Execute `supabase-schema-fixed.sql` in your Supabase SQL Editor
+2. **Verify RLS policies**: Run this query to check policies are set up:
+   ```sql
+   SELECT tablename, policyname, cmd
+   FROM pg_policies
+   WHERE tablename = 'profiles';
+   ```
+   You should see 3 policies: SELECT, UPDATE, and INSERT
+3. **Refresh the app**: Clear your browser cache and reload
+4. **Try again**: Attempt to link your profile
+
+If the error persists:
+- Check browser console (F12) for detailed error messages
+- Verify you're logged in with a valid account
+- Ensure your Supabase project is active and not paused
 
 ### Deploy to Netlify
 
