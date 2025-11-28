@@ -1109,16 +1109,101 @@ export default function PokerNowReporter() {
                     if (settlements.length === 0) {
                       return <p className="text-center text-gray-600">All even!</p>;
                     }
-                    return settlements.map((s, i) => (
-                      <div key={i} className="bg-white p-4 rounded shadow mb-2 flex justify-between items-center">
-                        <div className="flex items-center gap-4">
-                          <span className="font-bold text-red-600">{s.from}</span>
-                          <ArrowRight />
-                          <span className="font-bold text-green-600">{s.to}</span>
+
+                    // Get player totals for verification
+                    const playerTotals = {};
+                    games.forEach(game => {
+                      if (game.players) {
+                        game.players.forEach(player => {
+                          const key = player.name.toLowerCase().trim();
+                          const fullName = player.fullName || getPlayerFullName(player.name);
+                          if (!playerTotals[key]) {
+                            playerTotals[key] = { fullName, totalNet: 0 };
+                          }
+                          playerTotals[key].totalNet += player.net || 0;
+                        });
+                      }
+                    });
+
+                    return settlements.map((s, i) => {
+                      // Generate unique ID for settlement to track status
+                      const settlementId = `${s.from}-${s.to}-${s.amount}`;
+
+                      // Get saved status or default to 'pending'
+                      const savedStatus = localStorage.getItem(`settlement_${settlementId}`) || 'pending';
+
+                      const handleStatusChange = (e) => {
+                        const newStatus = e.target.value;
+                        localStorage.setItem(`settlement_${settlementId}`, newStatus);
+                        // Force re-render (in a real app, use state, but here we rely on React's re-render from parent or use a dummy state)
+                        window.dispatchEvent(new Event('storage')); // Trigger update
+                        // For this simple implementation, we might need a state to force update
+                        setGames([...games]); // Hack to force re-render
+                      };
+
+                      const getStatusColor = (status) => {
+                        switch (status) {
+                          case 'paid': return 'bg-green-100 text-green-800 border-green-200';
+                          case 'adjusted_players': return 'bg-blue-100 text-blue-800 border-blue-200';
+                          case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
+                          default: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                        }
+                      };
+
+                      return (
+                        <div key={i} className={`bg-white p-4 rounded shadow mb-4 border-l-4 ${savedStatus === 'paid' ? 'border-green-500' :
+                            savedStatus === 'adjusted_players' ? 'border-blue-500' :
+                              savedStatus === 'adjusted_offline' ? 'border-purple-500' :
+                                'border-yellow-500'
+                          }`}>
+                          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-4 flex-1">
+                              <div className="text-center">
+                                <span className="font-bold text-red-600 block text-lg">{s.from}</span>
+                                <span className="text-xs text-gray-500">
+                                  Total: <span className="text-red-600">
+                                    {Object.values(playerTotals).find(p => p.fullName === s.from)?.totalNet < 0
+                                      ? `₹${(Object.values(playerTotals).find(p => p.fullName === s.from)?.totalNet / 100).toFixed(0)}`
+                                      : 'Error'}
+                                  </span>
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col items-center px-4">
+                                <ArrowRight className="text-gray-400" />
+                                <span className="text-xs text-gray-400 mt-1">pays</span>
+                              </div>
+
+                              <div className="text-center">
+                                <span className="font-bold text-green-600 block text-lg">{s.to}</span>
+                                <span className="text-xs text-gray-500">
+                                  Total: <span className="text-green-600">
+                                    +{Object.values(playerTotals).find(p => p.fullName === s.to)?.totalNet > 0
+                                      ? `₹${(Object.values(playerTotals).find(p => p.fullName === s.to)?.totalNet / 100).toFixed(0)}`
+                                      : 'Error'}
+                                  </span>
+                                </span>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-4">
+                              <span className="text-2xl font-bold text-gray-800">₹{s.actualValue}</span>
+
+                              <select
+                                value={savedStatus}
+                                onChange={handleStatusChange}
+                                className={`text-sm font-semibold py-2 px-3 rounded border cursor-pointer outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(savedStatus)}`}
+                              >
+                                <option value="pending">⏳ Pending</option>
+                                <option value="paid">✓ Paid</option>
+                                <option value="adjusted_players">👥 Adj. with Players</option>
+                                <option value="adjusted_offline">🎲 Adj. with Offline</option>
+                              </select>
+                            </div>
+                          </div>
                         </div>
-                        <span className="text-xl font-bold text-orange-600">₹{s.actualValue}</span>
-                      </div>
-                    ));
+                      );
+                    });
                   })()}
                 </div>
 
