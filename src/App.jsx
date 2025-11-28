@@ -1473,286 +1473,287 @@ export default function PokerNowReporter() {
                   })()}
 
                   <div className="overflow-x-auto">
-                    <table className="w-full text-sm bg-white rounded shadow">
-                      <thead>
-                        <tr className="bg-blue-600 text-white">
-                          <th className="p-3 text-left">Rank</th>
-                          <th className="p-3 text-left">Player</th>
-                          <th className="p-3 text-center">Games</th>
-                          <th className="p-3 text-center">Wins</th>
-                          <th className="p-3 text-right">Total Buy-In</th>
-                          <th className="p-3 text-right">Total Buy-Out</th>
-                          <th className="p-3 text-right">Total Net P/L</th>
-                          <th className="p-3 text-center">Win Rate</th>
-                          <th className="p-3 text-right">Actual Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const playerStats = {};
-                          games.forEach(game => {
-                            if (game.players) {
-                              game.players.forEach(player => {
-                                const key = player.name.toLowerCase().trim();
-                                const fullName = player.fullName || getPlayerFullName(player.name);
-                                if (!playerStats[key]) {
-                                  playerStats[key] = {
-                                    name: player.name,
-                                    fullName: fullName,
-                                    totalBuyIn: 0,
-                                    totalBuyOut: 0,
-                                    totalNet: 0,
-                                    games: 0,
-                                    wins: 0
-                                  };
-                                }
-                                playerStats[key].totalBuyIn += player.buyIn || 0;
-                                playerStats[key].totalBuyOut += player.buyOut || 0;
-                                playerStats[key].totalNet += player.net || 0;
-                                playerStats[key].games += 1;
-                                if (game.winner.toLowerCase().trim() === key) {
-                                  playerStats[key].wins += 1;
-                                }
-                              });
-                            }
-                          });
-
-                          // Calculate rounded actual values with adjustment
-                          const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
-
-                          // Calculate actual values and rounding differences
-                          players.forEach(p => {
-                            p.actualValue = p.totalNet / 100; // Convert to rupees
-                            p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
-                            p.roundingDiff = p.actualValue - p.roundedValue; // Difference
-                          });
-
-                          // Calculate total rounding difference
-                          const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
-
-                          // Adjust the player with largest absolute value to absorb the rounding difference
-                          if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
-                            // Find player with largest absolute net value
-                            const largestPlayer = players.reduce((max, p) =>
-                              Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
-                            );
-                            largestPlayer.roundedValue += Math.round(totalRoundingDiff);
-                          }
-
-                          return players.map((p, i) => {
-                            const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
-
-                            return (
-                              <tr key={i} className="border-b hover:bg-blue-50">
-                                <td className="p-3 text-center">
-                                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
-                                    i === 1 ? 'bg-gray-300 text-gray-700' :
-                                      i === 2 ? 'bg-orange-400 text-orange-900' :
-                                        'bg-gray-100 text-gray-600'
-                                    }`}>
-                                    {i + 1}
-                                  </span>
-                                </td>
-                                <td className="p-3">
-                                  <div className="font-bold">{p.fullName}</div>
-                                  <div className="text-xs text-gray-500">{p.name}</div>
-                                </td>
-                                <td className="p-3 text-center">{p.games}</td>
-                                <td className="p-3 text-center">
-                                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
-                                    {p.wins}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
-                                <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
-                                <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
-                                </td>
-                                <td className="p-3 text-center">
-                                  <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
-                                    parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                    {winRate}%
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right">
-                                  <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
-                                    p.roundedValue < 0 ? 'text-red-600' :
-                                      'text-gray-600'
-                                    }`}>
-                                    {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
-                                  </div>
-                                  {Math.abs(p.roundingDiff) > 0.01 && (
-                                    <div className="text-xs text-gray-500">
-                                      (was ₹{p.actualValue.toFixed(2)})
-                                    </div>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          });
-                        })()}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-
-                <div className="mb-8 bg-orange-50 p-6 rounded-lg">
-                  <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
-                  {(() => {
-                    const settlements = calculateSettlements();
-                    if (settlements.length === 0) {
-                      return <p className="text-center text-gray-600">All even!</p>;
-                    }
-                    return settlements.map((s, i) => {
-                      const settlementKey = `${s.from}-${s.to}`;
-                      const currentStatus = settlements[settlementKey]?.status || 'pending';
-                      const isDebtor = profile?.player_name === s.from;
-                      const isCreditor = profile?.player_name === s.to;
-
-                      const getStatusColor = (status) => {
-                        switch (status) {
-                          case 'paid': return 'bg-green-100 text-green-800 border-green-200';
-                          case 'payment_sent': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-                          case 'adjusted': return 'bg-blue-100 text-blue-800 border-blue-200';
-                          case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
-                          default: return 'bg-gray-100 text-gray-800 border-gray-200';
-                        }
-                      };
-
-                      const formatStatus = (status) => {
-                        if (status === 'payment_sent') return 'Payment Sent';
-                        if (status === 'adjusted_offline') return 'Adj. (Offline)';
-                        return status.charAt(0).toUpperCase() + status.slice(1);
-                      };
-
-                      return (
-                        <div key={i} className="bg-white p-4 rounded shadow mb-2 flex flex-col sm:flex-row justify-between items-center gap-4">
-                          <div className="flex items-center gap-4 flex-1">
-                            <span className="font-bold text-red-600">{s.from}</span>
-                            <ArrowRight className="text-gray-400" size={20} />
-                            <span className="font-bold text-green-600">{s.to}</span>
-                          </div>
-
-                          <div className="flex items-center gap-3 flex-wrap justify-end">
-                            <span className="text-xl font-bold text-orange-600 mr-2">₹{s.actualValue}</span>
-
-                            {/* Role-based Actions */}
-                            {isDebtor && currentStatus === 'pending' && (
-                              <button
-                                onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'payment_sent')}
-                                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm"
-                              >
-                                Mark Paid
-                              </button>
-                            )}
-
-                            {isCreditor && currentStatus === 'payment_sent' && (
-                              <div className="flex gap-2">
-                                <button
-                                  onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'paid')}
-                                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors shadow-sm"
-                                >
-                                  Confirm
-                                </button>
-                                <button
-                                  onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'pending')}
-                                  className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors shadow-sm"
-                                >
-                                  Reject
-                                </button>
-                              </div>
-                            )}
-
-                            {/* Status Dropdown (Manual Override) */}
-                            <select
-                              value={currentStatus}
-                              onChange={(e) => handleSettlementAction(s.from, s.to, s.amount, e.target.value)}
-                              className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer ${getStatusColor(currentStatus)}`}
-                              disabled={!isCloudConnected}
-                              title="Change status manually"
-                            >
-                              <option value="pending">Pending</option>
-                              <option value="payment_sent">Payment Sent</option>
-                              <option value="paid">Paid</option>
-                              <option value="adjusted">Adjusted</option>
-                              <option value="adjusted_offline">Adj. (Offline)</option>
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    });
-                  })()}
-                </div>
-
-                <h2 className="text-2xl font-bold mb-4">🎮 Games</h2>
-                <div className="space-y-4">
-                  {games.map((game) => (
-                    <div key={game.id} className="border rounded-lg p-4 bg-gray-50">
-                      <div className="flex justify-between items-start mb-3">
-                        <div>
-                          <p className="font-bold">{game.date}</p>
-                          <p className="text-sm text-gray-600">{game.gameId}</p>
-                        </div>
-                        <button onClick={() => deleteGame(game.id)} className="text-red-600 hover:bg-red-100 p-2 rounded">
-                          <Trash2 size={18} />
-                        </button>
-                      </div>
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
-                        <div className="bg-blue-50 p-2 rounded">
-                          <p className="text-xs text-gray-600">Players</p>
-                          <p className="font-bold">{game.playerCount}</p>
-                        </div>
-                        <div className="bg-green-50 p-2 rounded">
-                          <p className="text-xs text-gray-600">Winner</p>
-                          <p className="font-bold text-sm">
-                            {game.winnerFullName || getPlayerFullName(game.winner)}
-                          </p>
-                          <p className="text-xs text-gray-500">{game.winner}</p>
-                        </div>
-                        <div className="bg-purple-50 p-2 rounded">
-                          <p className="text-xs text-gray-600">Profit</p>
-                          <p className="font-bold">₹{game.winnerProfit}</p>
-                        </div>
-                        <div className="bg-orange-50 p-2 rounded">
-                          <p className="text-xs text-gray-600">Total Pot</p>
-                          <p className="font-bold">₹{game.totalPot}</p>
-                        </div>
-                      </div>
-                      <table className="w-full text-sm">
+                      <table className="w-full text-sm bg-white dark:bg-gray-800 rounded shadow">
                         <thead>
-                          <tr className="border-b">
-                            <th className="p-2 text-left">Player</th>
-                            <th className="p-2 text-right">Buy-In</th>
-                            <th className="p-2 text-right">Buy-Out</th>
-                            <th className="p-2 text-right">Net</th>
+                          <tr className="bg-blue-600 dark:bg-blue-700 text-white">
+                            <th className="p-3 text-left">Rank</th>
+                            <th className="p-3 text-left">Player</th>
+                            <th className="p-3 text-center">Games</th>
+                            <th className="p-3 text-center">Wins</th>
+                            <th className="p-3 text-right">Total Buy-In</th>
+                            <th className="p-3 text-right">Total Buy-Out</th>
+                            <th className="p-3 text-right">Total Net P/L</th>
+                            <th className="p-3 text-center">Win Rate</th>
+                            <th className="p-3 text-right">Actual Value</th>
                           </tr>
                         </thead>
                         <tbody>
-                          {game.players && game.players.map((p, i) => (
-                            <tr key={i} className="border-b">
-                              <td className="p-2">
-                                <div className="font-medium">{p.fullName || getPlayerFullName(p.name)}</div>
-                                <div className="text-xs text-gray-500">{p.name}</div>
-                              </td>
-                              <td className="p-2 text-right">₹{p.buyIn}</td>
-                              <td className="p-2 text-right">₹{p.buyOut}</td>
-                              <td className={`p-2 text-right font-bold ${p.net > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                {p.net > 0 ? '+' : ''}₹{p.net}
-                              </td>
-                            </tr>
-                          ))}
+                          {(() => {
+                            const playerStats = {};
+                            games.forEach(game => {
+                              if (game.players) {
+                                game.players.forEach(player => {
+                                  const key = player.name.toLowerCase().trim();
+                                  const fullName = player.fullName || getPlayerFullName(player.name);
+                                  if (!playerStats[key]) {
+                                    playerStats[key] = {
+                                      name: player.name,
+                                      fullName: fullName,
+                                      totalBuyIn: 0,
+                                      totalBuyOut: 0,
+                                      totalNet: 0,
+                                      games: 0,
+                                      wins: 0
+                                    };
+                                  }
+                                  playerStats[key].totalBuyIn += player.buyIn || 0;
+                                  playerStats[key].totalBuyOut += player.buyOut || 0;
+                                  playerStats[key].totalNet += player.net || 0;
+                                  playerStats[key].games += 1;
+                                  if (game.winner.toLowerCase().trim() === key) {
+                                    playerStats[key].wins += 1;
+                                  }
+                                });
+                              }
+                            });
+
+                            // Calculate rounded actual values with adjustment
+                            const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
+
+                            // Calculate actual values and rounding differences
+                            players.forEach(p => {
+                              p.actualValue = p.totalNet / 100; // Convert to rupees
+                              p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
+                              p.roundingDiff = p.actualValue - p.roundedValue; // Difference
+                            });
+
+                            // Calculate total rounding difference
+                            const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+
+                            // Adjust the player with largest absolute value to absorb the rounding difference
+                            if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+                              // Find player with largest absolute net value
+                              const largestPlayer = players.reduce((max, p) =>
+                                Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+                              );
+                              largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+                            }
+
+                            return players.map((p, i) => {
+                              const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
+
+                              return (
+                                <tr key={i} className="border-b hover:bg-blue-50">
+                                  <td className="p-3 text-center">
+                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                      i === 1 ? 'bg-gray-300 text-gray-700' :
+                                        i === 2 ? 'bg-orange-400 text-orange-900' :
+                                          'bg-gray-100 text-gray-600'
+                                      }`}>
+                                      {i + 1}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-bold">{p.fullName}</div>
+                                    <div className="text-xs text-gray-500">{p.name}</div>
+                                  </td>
+                                  <td className="p-3 text-center">{p.games}</td>
+                                  <td className="p-3 text-center">
+                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
+                                      {p.wins}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
+                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
+                                  <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
+                                      parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                      {winRate}%
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
+                                      p.roundedValue < 0 ? 'text-red-600' :
+                                        'text-gray-600'
+                                      }`}>
+                                      {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
+                                    </div>
+                                    {Math.abs(p.roundingDiff) > 0.01 && (
+                                      <div className="text-xs text-gray-500">
+                                        (was ₹{p.actualValue.toFixed(2)})
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
                         </tbody>
                       </table>
                     </div>
-                  ))}
-                </div>
-              </>
+                  </div>
+
+                  <div className="mb-8 bg-orange-50 p-6 rounded-lg">
+                    <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
+                    {(() => {
+                      const settlements = calculateSettlements();
+                      if (settlements.length === 0) {
+                        return <p className="text-center text-gray-600">All even!</p>;
+                      }
+                      return settlements.map((s, i) => {
+                        const settlementKey = `${s.from}-${s.to}`;
+                        const currentStatus = settlements[settlementKey]?.status || 'pending';
+                        const isDebtor = profile?.player_name === s.from;
+                        const isCreditor = profile?.player_name === s.to;
+
+                        const getStatusColor = (status) => {
+                          switch (status) {
+                            case 'paid': return 'bg-green-100 text-green-800 border-green-200';
+                            case 'payment_sent': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                            case 'adjusted': return 'bg-blue-100 text-blue-800 border-blue-200';
+                            case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
+                            default: return 'bg-gray-100 text-gray-800 border-gray-200';
+                          }
+                        };
+
+                        const formatStatus = (status) => {
+                          if (status === 'payment_sent') return 'Payment Sent';
+                          if (status === 'adjusted_offline') return 'Adj. (Offline)';
+                          return status.charAt(0).toUpperCase() + status.slice(1);
+                        };
+
+                        return (
+                          <div key={i} className="bg-white p-4 rounded shadow mb-2 flex flex-col sm:flex-row justify-between items-center gap-4">
+                            <div className="flex items-center gap-4 flex-1">
+                              <span className="font-bold text-red-600">{s.from}</span>
+                              <ArrowRight className="text-gray-400" size={20} />
+                              <span className="font-bold text-green-600">{s.to}</span>
+                            </div>
+
+                            <div className="flex items-center gap-3 flex-wrap justify-end">
+
+                              {/* Role-based Actions */}
+                              {isDebtor && currentStatus === 'pending' && (
+                                <button
+                                  onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'payment_sent')}
+                                  className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm"
+                                >
+                                  Mark Paid
+                                </button>
+                              )}
+
+                              {isCreditor && currentStatus === 'payment_sent' && (
+                                <div className="flex gap-2">
+                                  <button
+                                    onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'paid')}
+                                    className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors shadow-sm"
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'pending')}
+                                    className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors shadow-sm"
+                                  >
+                                    Reject
+                                  </button>
+                                </div>
+                              )}
+
+                              {/* Status Dropdown (Manual Override) */}
+                              <select
+                                value={currentStatus}
+                                onChange={(e) => handleSettlementAction(s.from, s.to, s.amount, e.target.value)}
+                                className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer ${getStatusColor(currentStatus)}`}
+                                disabled={!isCloudConnected}
+                                title="Change status manually"
+                              >
+                                <option value="pending">Pending</option>
+                                <option value="payment_sent">Payment Sent</option>
+                                <option value="paid">Paid</option>
+                                <option value="adjusted">Adjusted</option>
+                                <option value="adjusted_offline">Adj. (Offline)</option>
+                              </select>
+                            </div>
+                          </div>
+                        );
+                      });
+                    })()}
+                  </div>
+
+                  <h2 className="text-2xl font-bold mb-4">🎮 Games</h2>
+                  <div className="space-y-4">
+                    {games.map((game) => (
+                      <div key={game.id} className="border rounded-lg p-4 bg-gray-50">
+                        <div className="flex justify-between items-start mb-3">
+                          <div>
+                            <p className="font-bold">{game.date}</p>
+                            <p className="text-sm text-gray-600">{game.gameId}</p>
+                          </div>
+                          <button onClick={() => deleteGame(game.id)} className="text-red-600 hover:bg-red-100 p-2 rounded">
+                            <Trash2 size={18} />
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-2 mb-3">
+                          <div className="bg-blue-50 p-2 rounded">
+                            <p className="text-xs text-gray-600">Players</p>
+                            <p className="font-bold">{game.playerCount}</p>
+                          </div>
+                          <div className="bg-green-50 p-2 rounded">
+                            <p className="text-xs text-gray-600">Winner</p>
+                            <p className="font-bold text-sm">
+                              {game.winnerFullName || getPlayerFullName(game.winner)}
+                            </p>
+                            <p className="text-xs text-gray-500">{game.winner}</p>
+                          </div>
+                          <div className="bg-purple-50 p-2 rounded">
+                            <p className="text-xs text-gray-600">Profit</p>
+                            <p className="font-bold">₹{game.winnerProfit}</p>
+                          </div>
+                          <div className="bg-orange-50 p-2 rounded">
+                            <p className="text-xs text-gray-600">Total Pot</p>
+                            <p className="font-bold">₹{game.totalPot}</p>
+                          </div>
+                        </div>
+                        <div className="overflow-x-auto">
+                          <table className="w-full text-sm dark:bg-gray-800">
+                            <thead>
+                              <tr className="border-b dark:border-gray-700">
+                                <th className="p-2 text-left">Player</th>
+                                <th className="p-2 text-right">Buy-In</th>
+                                <th className="p-2 text-right">Buy-Out</th>
+                                <th className="p-2 text-right">Net</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {game.players && game.players.map((p, i) => (
+                                <tr key={i} className="border-b dark:border-gray-700">
+                                  <td className="p-2">
+                                    <div className="font-medium">{p.fullName || getPlayerFullName(p.name)}</div>
+                                    <div className="text-xs text-gray-500">{p.name}</div>
+                                  </td>
+                                  <td className="p-2 text-right">₹{p.buyIn}</td>
+                                  <td className="p-2 text-right">₹{p.buyOut}</td>
+                                  <td className={`p-2 text-right font-bold ${p.net > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {p.net > 0 ? '+' : ''}₹{p.net}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </>
             )}
+              </div>
           </div>
         </div>
       </div>
-    </div>
-  );
+      );
 }
