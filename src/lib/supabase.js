@@ -2,14 +2,22 @@
 import { createClient } from '@supabase/supabase-js';
 
 // Initialize the Supabase client
-// We'll use localStorage to persist credentials so the user only enters them once
+// Priority: 1. Environment variables, 2. localStorage
 let supabase = null;
 
 export const getSupabase = () => {
     if (supabase) return supabase;
 
-    const supabaseUrl = localStorage.getItem('supabase_url');
-    const supabaseKey = localStorage.getItem('supabase_key');
+    // First try environment variables
+    const envUrl = import.meta.env.VITE_SUPABASE_URL;
+    const envKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+
+    // Then try localStorage
+    const storedUrl = localStorage.getItem('supabase_url');
+    const storedKey = localStorage.getItem('supabase_key');
+
+    const supabaseUrl = envUrl || storedUrl;
+    const supabaseKey = envKey || storedKey;
 
     if (supabaseUrl && supabaseKey) {
         try {
