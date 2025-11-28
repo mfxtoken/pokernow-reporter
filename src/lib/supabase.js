@@ -233,3 +233,42 @@ export const fetchAllGames = async () => {
         addedAt: row.created_at
     }));
 };
+
+export const removeDuplicateGames = async () => {
+    const client = getSupabase();
+    if (!client) throw new Error('Supabase not configured');
+
+    const { data: games, error } = await client
+        .from('games')
+        .select('id, game_id, date, winner, total_pot, created_at')
+        .order('created_at', { ascending: true }); // Oldest first
+
+    if (error) throw error;
+
+    const uniqueKeys = new Set();
+    const duplicates = [];
+
+    games.forEach(game => {
+        // Create a unique key based on content
+        const key = `${game.date}-${game.winner}-${game.total_pot}`;
+
+        if (uniqueKeys.has(key)) {
+            duplicates.push(game.id); // This is a duplicate (since we ordered by created_at, we keep the first/oldest)
+        } else {
+            uniqueKeys.add(key);
+        }
+    });
+
+    if (duplicates.length === 0) {
+        return { count: 0 };
+    }
+
+    const { error: deleteError } = await client
+        .from('games')
+        .delete()
+        .in('id', duplicates);
+
+    if (deleteError) throw deleteError;
+
+    return { count: duplicates.length };
+};

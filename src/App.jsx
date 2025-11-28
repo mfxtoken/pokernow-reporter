@@ -37,7 +37,8 @@ import {
   updateProfile,
   onAuthStateChange,
   getSettlements,
-  updateSettlement
+  updateSettlement,
+  removeDuplicateGames
 } from './lib/supabase';
 
 // IndexedDB Database
@@ -471,6 +472,33 @@ export default function PokerNowReporter() {
     } catch (error) {
       console.error('Error generating report:', error);
       showMessage('error', 'Failed to generate report image');
+    }
+  };
+
+  const handleRemoveDuplicates = async () => {
+    if (!isCloudConnected) {
+      showMessage('error', 'Please connect to Cloud Database first');
+      return;
+    }
+
+    if (!confirm('Are you sure you want to scan for and remove duplicate games from the cloud database? This cannot be undone.')) {
+      return;
+    }
+
+    setSyncing(true); // Using syncing state for this operation as well
+    try {
+      const result = await removeDuplicateGames();
+      if (result.count > 0) {
+        showMessage('success', `Removed ${result.count} duplicate games!`);
+        await loadGames(); // Refresh local data after cloud dedupe
+      } else {
+        showMessage('success', 'No duplicates found.');
+      }
+    } catch (error) {
+      console.error('Error removing duplicates:', error);
+      showMessage('error', 'Failed to remove duplicates: ' + error.message);
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -1373,6 +1401,15 @@ export default function PokerNowReporter() {
                 >
                   <Trash2 size={18} />
                   Clear
+                </button>
+                <button
+                  onClick={handleRemoveDuplicates}
+                  disabled={!isCloudConnected || syncing}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Remove duplicate games from cloud"
+                >
+                  <Trash2 size={18} />
+                  Dedupe
                 </button>
               </div>
             </div>
