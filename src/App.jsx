@@ -19,8 +19,12 @@ import {
   User,
   Lock,
   Moon,
-  Sun
+  Sun,
+  RotateCcw, // Added for potential future use or if it was intended
+  Check, // Added for potential future use or if it was intended
+  X // Added for potential future use or if it was intended
 } from 'lucide-react';
+import html2canvas from 'html2canvas';
 import {
   hasCredentials,
   uploadGame,
@@ -227,8 +231,10 @@ export default function PokerNowReporter() {
   const [showProfileDropdown, setShowProfileDropdown] = useState(false);
   const [settlements, setSettlements] = useState({}); // Store cloud settlements
   const [darkMode, setDarkMode] = useState(() => {
-    return localStorage.getItem('darkMode') === 'true';
+    const saved = localStorage.getItem('darkMode');
+    return saved ? JSON.parse(saved) : false;
   });
+  const reportRef = useRef(null);
 
   useEffect(() => {
     localStorage.setItem('darkMode', darkMode);
@@ -444,6 +450,28 @@ export default function PokerNowReporter() {
       showMessage('success', `Profile set to ${playerName}`);
     }
     setShowProfileModal(false);
+  };
+
+  const handleShareReport = async () => {
+    if (!reportRef.current) return;
+
+    try {
+      const canvas = await html2canvas(reportRef.current, {
+        backgroundColor: darkMode ? '#111827' : '#ffffff',
+        scale: 2, // Higher quality
+        logging: false,
+        useCORS: true
+      });
+
+      const image = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `pokernow-report-${new Date().toISOString().split('T')[0]}.png`;
+      link.click();
+    } catch (error) {
+      console.error('Error generating report:', error);
+      showMessage('error', 'Failed to generate report image');
+    }
   };
 
   const handleSettlementAction = async (debtor, creditor, amount, action) => {
@@ -1306,6 +1334,15 @@ export default function PokerNowReporter() {
                   <Save size={18} />
                   Backup
                 </button>
+                <button
+                  onClick={handleShareReport}
+                  disabled={games.length === 0}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center gap-2"
+                  title="Download report as image"
+                >
+                  <Download size={18} />
+                  Share Report
+                </button>
                 <input
                   type="file"
                   accept=".json"
@@ -1350,141 +1387,11 @@ export default function PokerNowReporter() {
                   <p className="text-lg font-bold text-green-800 dark:text-green-300">✓ {games.length} Games Loaded</p>
                 </div>
 
-                {/* Player Statistics Dashboard */}
-                {(() => {
-                  if (games.length === 0) return null;
-
-                  const playerStats = {};
-                  games.forEach(game => {
-                    if (game.players) {
-                      game.players.forEach(player => {
-                        const key = player.name.toLowerCase().trim();
-                        const fullName = player.fullName || getPlayerFullName(player.name);
-                        if (!playerStats[key]) {
-                          playerStats[key] = {
-                            name: player.name,
-                            fullName: fullName,
-                            totalNet: 0,
-                            gamesPlayed: 0,
-                            wins: 0,
-                            bestGame: -Infinity,
-                            worstGame: Infinity,
-                            gameHistory: []
-                          };
-                        }
-                        playerStats[key].totalNet += player.net || 0;
-                        playerStats[key].gamesPlayed += 1;
-                        if (player.net > playerStats[key].bestGame) {
-                          playerStats[key].bestGame = player.net;
-                        }
-                        if (player.net < playerStats[key].worstGame) {
-                          playerStats[key].worstGame = player.net;
-                        }
-                        if (game.winner && game.winner.toLowerCase().trim() === key) {
-                          playerStats[key].wins += 1;
-                        }
-                        playerStats[key].gameHistory.push(player.net);
-                      });
-                    }
-                  });
-
-                  const playersArray = Object.values(playerStats);
-                  if (playersArray.length === 0) return null;
-
-                  return (
-                    <div className="mb-8">
-                      <h2 className="text-2xl font-bold mb-6 dark:text-white">👥 Player Statistics</h2>
-                      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                        {playersArray.map((player, idx) => {
-                          const winRate = ((player.wins / player.gamesPlayed) * 100).toFixed(1);
-                          const avgProfit = (player.totalNet / player.gamesPlayed).toFixed(0);
-                          const isPositive = player.totalNet >= 0;
-
-                          // Calculate running balance
-                          let runningBalance = 0;
-                          const balanceProgression = player.gameHistory.map(net => {
-                            runningBalance += net;
-                            return runningBalance;
-                          });
-                          const finalBalance = runningBalance;
-
-                          return (
-                            <div
-                              key={idx}
-                              className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 border-l-4 hover:shadow-xl transition-shadow"
-                              style={{ borderLeftColor: isPositive ? '#10b981' : '#ef4444' }}
-                            >
-                              <div className="flex items-center gap-3 mb-3">
-                                <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg">
-                                  {player.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
-                                </div>
-                                <div className="flex-1">
-                                  <h3 className="font-bold text-lg dark:text-white">{player.fullName}</h3>
-                                  <p className="text-xs text-gray-500 dark:text-gray-400">{player.name}</p>
-                                </div>
-                              </div>
-
-                              <div className="space-y-2">
-                                {/* Bankroll Balance */}
-                                <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
-                                  <div className="text-xs text-purple-600 dark:text-purple-400 font-semibold mb-1">💰 Bankroll Balance</div>
-                                  <div className={`text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {finalBalance >= 0 ? '+' : ''}₹{finalBalance}
-                                  </div>
-                                  <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
-                                    Cumulative across {player.gamesPlayed} sessions
-                                  </div>
-                                </div>
-
-                                <div className="flex justify-between items-center">
-                                  <span className="text-sm text-gray-600 dark:text-gray-400">Total Profit:</span>
-                                  <span className={`font-bold text-lg ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
-                                    {isPositive ? '+' : ''}₹{player.totalNet}
-                                  </span>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2">
-                                  <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-2">
-                                    <div className="text-xs text-gray-600 dark:text-gray-400">Games</div>
-                                    <div className="font-bold text-blue-600 dark:text-blue-400">{player.gamesPlayed}</div>
-                                  </div>
-                                  <div className="bg-purple-50 dark:bg-purple-900/20 rounded p-2">
-                                    <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
-                                    <div className="font-bold text-purple-600 dark:text-purple-400">{winRate}%</div>
-                                  </div>
-                                </div>
-
-                                <div className="bg-gray-50 dark:bg-gray-700 rounded p-2">
-                                  <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Profit/Game</div>
-                                  <div className={`font-bold ${parseFloat(avgProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {parseFloat(avgProfit) >= 0 ? '+' : ''}₹{avgProfit}
-                                  </div>
-                                </div>
-
-                                <div className="grid grid-cols-2 gap-2 pt-2 border-t dark:border-gray-700">
-                                  <div>
-                                    <div className="text-xs text-gray-600 dark:text-gray-400">Best</div>
-                                    <div className="font-semibold text-green-600">+₹{player.bestGame}</div>
-                                  </div>
-                                  <div>
-                                    <div className="text-xs text-gray-600 dark:text-gray-400">Worst</div>
-                                    <div className="font-semibold text-red-600">₹{player.worstGame}</div>
-                                  </div>
-                                </div>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  );
-                })()}
-
-                <div className="mb-8 bg-blue-50 dark:bg-blue-900/10 p-6 rounded-lg border-2 border-blue-200 dark:border-blue-800">
-                  <h2 className="text-2xl font-bold mb-4 dark:text-white">📊 Consolidated Player Statistics</h2>
-
-                  {/* Financial Summary Cards */}
+                <div ref={reportRef} className="space-y-8 bg-white dark:bg-gray-900 p-4 rounded-xl">
+                  {/* Player Statistics Dashboard */}
                   {(() => {
+                    if (games.length === 0) return null;
+
                     const playerStats = {};
                     games.forEach(game => {
                       if (game.players) {
@@ -1495,298 +1402,430 @@ export default function PokerNowReporter() {
                             playerStats[key] = {
                               name: player.name,
                               fullName: fullName,
-                              totalNet: 0
+                              totalNet: 0,
+                              gamesPlayed: 0,
+                              wins: 0,
+                              bestGame: -Infinity,
+                              worstGame: Infinity,
+                              gameHistory: []
                             };
                           }
                           playerStats[key].totalNet += player.net || 0;
+                          playerStats[key].gamesPlayed += 1;
+                          if (player.net > playerStats[key].bestGame) {
+                            playerStats[key].bestGame = player.net;
+                          }
+                          if (player.net < playerStats[key].worstGame) {
+                            playerStats[key].worstGame = player.net;
+                          }
+                          if (game.winner && game.winner.toLowerCase().trim() === key) {
+                            playerStats[key].wins += 1;
+                          }
+                          playerStats[key].gameHistory.push(player.net);
                         });
                       }
                     });
 
-                    const players = Object.values(playerStats);
-
-                    // Calculate rounded values with adjustment
-                    players.forEach(p => {
-                      p.actualValue = p.totalNet / 100;
-                      p.roundedValue = Math.round(p.actualValue);
-                      p.roundingDiff = p.actualValue - p.roundedValue;
-                    });
-
-                    // Calculate total rounding difference and adjust
-                    const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
-                    if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
-                      const largestPlayer = players.reduce((max, p) =>
-                        Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
-                      );
-                      largestPlayer.roundedValue += Math.round(totalRoundingDiff);
-                    }
-
-                    // Calculate totals using rounded values
-                    const totalReceivable = players
-                      .filter(p => p.roundedValue > 0)
-                      .reduce((sum, p) => sum + p.roundedValue, 0);
-                    const totalPayable = players
-                      .filter(p => p.roundedValue < 0)
-                      .reduce((sum, p) => sum + Math.abs(p.roundedValue), 0);
-                    const balance = totalReceivable - totalPayable;
+                    const playersArray = Object.values(playerStats);
+                    if (playersArray.length === 0) return null;
 
                     return (
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-                        {/* Total Receivable */}
-                        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-green-100 text-sm font-medium mb-1">Total Receivable</p>
-                              <p className="text-3xl font-bold">₹{totalReceivable}</p>
-                              <p className="text-green-100 text-xs mt-1">Amount to be received</p>
-                            </div>
-                            <TrendingUp size={48} className="opacity-50" />
-                          </div>
-                        </div>
+                      <div className="mb-8">
+                        <h2 className="text-2xl font-bold mb-6 dark:text-white">👥 Player Statistics</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                          {playersArray.map((player, idx) => {
+                            const winRate = ((player.wins / player.gamesPlayed) * 100).toFixed(1);
+                            const avgProfit = (player.totalNet / player.gamesPlayed).toFixed(0);
+                            const isPositive = player.totalNet >= 0;
 
-                        {/* Total Payable */}
-                        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-red-100 text-sm font-medium mb-1">Total Payable</p>
-                              <p className="text-3xl font-bold">₹{totalPayable}</p>
-                              <p className="text-red-100 text-xs mt-1">Amount to be paid</p>
-                            </div>
-                            <TrendingDown size={48} className="opacity-50" />
-                          </div>
-                        </div>
-
-                        {/* Balance Check */}
-                        <div className={`bg-gradient-to-br ${Math.abs(balance) < 1 ? 'from-blue-500 to-blue-600' :
-                          balance > 0 ? 'from-orange-500 to-orange-600' : 'from-purple-500 to-purple-600'
-                          } rounded-lg p-6 text-white shadow-lg`}>
-                          <div className="flex items-center justify-between">
-                            <div>
-                              <p className="text-white text-opacity-90 text-sm font-medium mb-1">Balance Check</p>
-                              <p className="text-3xl font-bold">
-                                {Math.abs(balance) < 1 ? '✓ Balanced' : `₹${Math.abs(balance)}`}
-                              </p>
-                              <p className="text-white text-opacity-90 text-xs mt-1">
-                                {Math.abs(balance) < 1 ? 'All settlements match' :
-                                  balance > 0 ? 'Receivable > Payable' : 'Payable > Receivable'}
-                              </p>
-                            </div>
-                            <CheckCircle size={48} className="opacity-50" />
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  {/* Weekly Activity Chart */}
-                  {(() => {
-                    if (games.length === 0) return null;
-
-                    // Helper to get Monday of the week for a date
-                    const getMonday = (d) => {
-                      const date = new Date(d);
-                      const day = date.getDay();
-                      const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-                      const monday = new Date(date.setDate(diff));
-                      monday.setHours(0, 0, 0, 0);
-                      return monday;
-                    };
-
-                    // Group games by week
-                    const gamesByWeek = {};
-                    games.forEach(game => {
-                      if (!game.date) return;
-                      const monday = getMonday(game.date).toISOString().split('T')[0];
-                      if (!gamesByWeek[monday]) {
-                        gamesByWeek[monday] = [];
-                      }
-                      gamesByWeek[monday].push(game);
-                    });
-
-                    // Get latest week or current week
-                    const weeks = Object.keys(gamesByWeek).sort().reverse();
-                    const currentWeekStart = weeks[0];
-                    const currentWeekGames = gamesByWeek[currentWeekStart] || [];
-
-                    // Initialize daily counts and games (Mon-Sun)
-                    const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
-                    const dailyGames = [[], [], [], [], [], [], []];
-                    const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-
-                    currentWeekGames.forEach(game => {
-                      const date = new Date(game.date);
-                      // getDay(): 0=Sun, 1=Mon... 6=Sat
-                      // Map to 0=Mon... 6=Sun
-                      let dayIndex = date.getDay() - 1;
-                      if (dayIndex === -1) dayIndex = 6; // Sunday
-                      dailyCounts[dayIndex]++;
-                      dailyGames[dayIndex].push(game);
-                    });
-
-                    const maxGames = Math.max(...dailyCounts, 1); // Avoid division by zero
-
-                    return (
-                      <div className="mb-8 bg-white p-6 rounded-lg shadow border border-gray-100">
-                        <div className="flex items-center justify-between mb-6">
-                          <div>
-                            <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
-                              <TrendingUp size={20} className="text-blue-600" />
-                              Weekly Activity
-                            </h2>
-                            <p className="text-sm text-gray-500 mt-1">
-                              Week of {new Date(currentWeekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {new Date(new Date(currentWeekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
-                            </p>
-                          </div>
-                          <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-700 text-sm font-semibold">
-                            {currentWeekGames.length} Games Played
-                          </div>
-                        </div>
-
-                        <div className="grid grid-cols-7 gap-2 h-32 items-end">
-                          {dailyCounts.map((count, i) => (
-                            <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
-                              <div className="relative w-full flex justify-center items-end h-full">
-                                <div
-                                  className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 flex items-end justify-center pb-1 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
-                                    }`}
-                                  style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '20px' : '4px' }}
-                                >
-                                  {count > 0 && (
-                                    <span className="text-xs font-bold text-white mb-1">{count}</span>
-                                  )}
-                                </div>
-                              </div>
-                              <div className="text-xs font-medium text-gray-500">{days[i]}</div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    );
-                  })()}
-
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm bg-white dark:bg-gray-800 rounded shadow">
-                      <thead>
-                        <tr className="bg-blue-600 dark:bg-blue-700 text-white">
-                          <th className="p-3 text-left">Rank</th>
-                          <th className="p-3 text-left">Player</th>
-                          <th className="p-3 text-center">Games</th>
-                          <th className="p-3 text-center">Wins</th>
-                          <th className="p-3 text-right">Total Buy-In</th>
-                          <th className="p-3 text-right">Total Buy-Out</th>
-                          <th className="p-3 text-right">Total Net P/L</th>
-                          <th className="p-3 text-center">Win Rate</th>
-                          <th className="p-3 text-right">Actual Value</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {(() => {
-                          const playerStats = {};
-                          games.forEach(game => {
-                            if (game.players) {
-                              game.players.forEach(player => {
-                                const key = player.name.toLowerCase().trim();
-                                const fullName = player.fullName || getPlayerFullName(player.name);
-                                if (!playerStats[key]) {
-                                  playerStats[key] = {
-                                    name: player.name,
-                                    fullName: fullName,
-                                    totalBuyIn: 0,
-                                    totalBuyOut: 0,
-                                    totalNet: 0,
-                                    games: 0,
-                                    wins: 0
-                                  };
-                                }
-                                playerStats[key].totalBuyIn += player.buyIn || 0;
-                                playerStats[key].totalBuyOut += player.buyOut || 0;
-                                playerStats[key].totalNet += player.net || 0;
-                                playerStats[key].games += 1;
-                                if (game.winner.toLowerCase().trim() === key) {
-                                  playerStats[key].wins += 1;
-                                }
-                              });
-                            }
-                          });
-
-                          // Calculate rounded actual values with adjustment
-                          const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
-
-                          // Calculate actual values and rounding differences
-                          players.forEach(p => {
-                            p.actualValue = p.totalNet / 100; // Convert to rupees
-                            p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
-                            p.roundingDiff = p.actualValue - p.roundedValue; // Difference
-                          });
-
-                          // Calculate total rounding difference
-                          const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
-
-                          // Adjust the player with largest absolute value to absorb the rounding difference
-                          if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
-                            // Find player with largest absolute net value
-                            const largestPlayer = players.reduce((max, p) =>
-                              Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
-                            );
-                            largestPlayer.roundedValue += Math.round(totalRoundingDiff);
-                          }
-
-                          return players.map((p, i) => {
-                            const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
+                            // Calculate running balance
+                            let runningBalance = 0;
+                            const balanceProgression = player.gameHistory.map(net => {
+                              runningBalance += net;
+                              return runningBalance;
+                            });
+                            const finalBalance = runningBalance;
 
                             return (
-                              <tr key={i} className="border-b hover:bg-blue-50">
-                                <td className="p-3 text-center">
-                                  <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
-                                    i === 1 ? 'bg-gray-300 text-gray-700' :
-                                      i === 2 ? 'bg-orange-400 text-orange-900' :
-                                        'bg-gray-100 text-gray-600'
-                                    }`}>
-                                    {i + 1}
-                                  </span>
-                                </td>
-                                <td className="p-3">
-                                  <div className="font-bold">{p.fullName}</div>
-                                  <div className="text-xs text-gray-500">{p.name}</div>
-                                </td>
-                                <td className="p-3 text-center">{p.games}</td>
-                                <td className="p-3 text-center">
-                                  <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
-                                    {p.wins}
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
-                                <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
-                                <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
-                                </td>
-                                <td className="p-3 text-center">
-                                  <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
-                                    parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
-                                    {winRate}%
-                                  </span>
-                                </td>
-                                <td className="p-3 text-right">
-                                  <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
-                                    p.roundedValue < 0 ? 'text-red-600' :
-                                      'text-gray-600'
-                                    }`}>
-                                    {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
+                              <div
+                                key={idx}
+                                className="bg-white dark:bg-gray-800 rounded-lg shadow-lg p-4 border-l-4 hover:shadow-xl transition-shadow"
+                                style={{ borderLeftColor: isPositive ? '#10b981' : '#ef4444' }}
+                              >
+                                <div className="flex items-center gap-3 mb-3">
+                                  <div className="w-12 h-12 rounded-full bg-gradient-to-br from-blue-500 to-blue-600 flex items-center justify-center text-white font-bold text-lg">
+                                    {player.fullName.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)}
                                   </div>
-                                  {Math.abs(p.roundingDiff) > 0.01 && (
-                                    <div className="text-xs text-gray-500">
-                                      (was ₹{p.actualValue.toFixed(2)})
+                                  <div className="flex-1">
+                                    <h3 className="font-bold text-lg dark:text-white">{player.fullName}</h3>
+                                    <p className="text-xs text-gray-500 dark:text-gray-400">{player.name}</p>
+                                  </div>
+                                </div>
+
+                                <div className="space-y-2">
+                                  {/* Bankroll Balance */}
+                                  <div className="bg-gradient-to-r from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 rounded-lg p-3 border border-purple-200 dark:border-purple-800">
+                                    <div className="text-xs text-purple-600 dark:text-purple-400 font-semibold mb-1">💰 Bankroll Balance</div>
+                                    <div className={`text-2xl font-bold ${finalBalance >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                      {finalBalance >= 0 ? '+' : ''}₹{finalBalance}
                                     </div>
-                                  )}
-                                </td>
-                              </tr>
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 mt-1">
+                                      Cumulative across {player.gamesPlayed} sessions
+                                    </div>
+                                  </div>
+
+                                  <div className="flex justify-between items-center">
+                                    <span className="text-sm text-gray-600 dark:text-gray-400">Total Profit:</span>
+                                    <span className={`font-bold text-lg ${isPositive ? 'text-green-600' : 'text-red-600'}`}>
+                                      {isPositive ? '+' : ''}₹{player.totalNet}
+                                    </span>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2">
+                                    <div className="bg-blue-50 dark:bg-blue-900/20 rounded p-2">
+                                      <div className="text-xs text-gray-600 dark:text-gray-400">Games</div>
+                                      <div className="font-bold text-blue-600 dark:text-blue-400">{player.gamesPlayed}</div>
+                                    </div>
+                                    <div className="bg-purple-50 dark:bg-purple-900/20 rounded p-2">
+                                      <div className="text-xs text-gray-600 dark:text-gray-400">Win Rate</div>
+                                      <div className="font-bold text-purple-600 dark:text-purple-400">{winRate}%</div>
+                                    </div>
+                                  </div>
+
+                                  <div className="bg-gray-50 dark:bg-gray-700 rounded p-2">
+                                    <div className="text-xs text-gray-600 dark:text-gray-400 mb-1">Avg Profit/Game</div>
+                                    <div className={`font-bold ${parseFloat(avgProfit) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                      {parseFloat(avgProfit) >= 0 ? '+' : ''}₹{avgProfit}
+                                    </div>
+                                  </div>
+
+                                  <div className="grid grid-cols-2 gap-2 pt-2 border-t dark:border-gray-700">
+                                    <div>
+                                      <div className="text-xs text-gray-600 dark:text-gray-400">Best</div>
+                                      <div className="font-semibold text-green-600">+₹{player.bestGame}</div>
+                                    </div>
+                                    <div>
+                                      <div className="text-xs text-gray-600 dark:text-gray-400">Worst</div>
+                                      <div className="font-semibold text-red-600">₹{player.worstGame}</div>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
                             );
+                          })}
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="mb-8 bg-blue-50 dark:bg-blue-900/10 p-6 rounded-lg border-2 border-blue-200 dark:border-blue-800">
+                    <h2 className="text-2xl font-bold mb-4 dark:text-white">📊 Consolidated Player Statistics</h2>
+
+                    {/* Financial Summary Cards */}
+                    {(() => {
+                      const playerStats = {};
+                      games.forEach(game => {
+                        if (game.players) {
+                          game.players.forEach(player => {
+                            const key = player.name.toLowerCase().trim();
+                            const fullName = player.fullName || getPlayerFullName(player.name);
+                            if (!playerStats[key]) {
+                              playerStats[key] = {
+                                name: player.name,
+                                fullName: fullName,
+                                totalNet: 0
+                              };
+                            }
+                            playerStats[key].totalNet += player.net || 0;
                           });
-                        })()}
-                      </tbody>
-                    </table>
+                        }
+                      });
+
+                      const players = Object.values(playerStats);
+
+                      // Calculate rounded values with adjustment
+                      players.forEach(p => {
+                        p.actualValue = p.totalNet / 100;
+                        p.roundedValue = Math.round(p.actualValue);
+                        p.roundingDiff = p.actualValue - p.roundedValue;
+                      });
+
+                      // Calculate total rounding difference and adjust
+                      const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+                      if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+                        const largestPlayer = players.reduce((max, p) =>
+                          Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+                        );
+                        largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+                      }
+
+                      // Calculate totals using rounded values
+                      const totalReceivable = players
+                        .filter(p => p.roundedValue > 0)
+                        .reduce((sum, p) => sum + p.roundedValue, 0);
+                      const totalPayable = players
+                        .filter(p => p.roundedValue < 0)
+                        .reduce((sum, p) => sum + Math.abs(p.roundedValue), 0);
+                      const balance = totalReceivable - totalPayable;
+
+                      return (
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                          {/* Total Receivable */}
+                          <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-green-100 text-sm font-medium mb-1">Total Receivable</p>
+                                <p className="text-3xl font-bold">₹{totalReceivable}</p>
+                                <p className="text-green-100 text-xs mt-1">Amount to be received</p>
+                              </div>
+                              <TrendingUp size={48} className="opacity-50" />
+                            </div>
+                          </div>
+
+                          {/* Total Payable */}
+                          <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-red-100 text-sm font-medium mb-1">Total Payable</p>
+                                <p className="text-3xl font-bold">₹{totalPayable}</p>
+                                <p className="text-red-100 text-xs mt-1">Amount to be paid</p>
+                              </div>
+                              <TrendingDown size={48} className="opacity-50" />
+                            </div>
+                          </div>
+
+                          {/* Balance Check */}
+                          <div className={`bg-gradient-to-br ${Math.abs(balance) < 1 ? 'from-blue-500 to-blue-600' :
+                            balance > 0 ? 'from-orange-500 to-orange-600' : 'from-purple-500 to-purple-600'
+                            } rounded-lg p-6 text-white shadow-lg`}>
+                            <div className="flex items-center justify-between">
+                              <div>
+                                <p className="text-white text-opacity-90 text-sm font-medium mb-1">Balance Check</p>
+                                <p className="text-3xl font-bold">
+                                  {Math.abs(balance) < 1 ? '✓ Balanced' : `₹${Math.abs(balance)}`}
+                                </p>
+                                <p className="text-white text-opacity-90 text-xs mt-1">
+                                  {Math.abs(balance) < 1 ? 'All settlements match' :
+                                    balance > 0 ? 'Receivable > Payable' : 'Payable > Receivable'}
+                                </p>
+                              </div>
+                              <CheckCircle size={48} className="opacity-50" />
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Weekly Activity Chart */}
+                    {(() => {
+                      if (games.length === 0) return null;
+
+                      // Helper to get Monday of the week for a date
+                      const getMonday = (d) => {
+                        const date = new Date(d);
+                        const day = date.getDay();
+                        const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
+                        const monday = new Date(date.setDate(diff));
+                        monday.setHours(0, 0, 0, 0);
+                        return monday;
+                      };
+
+                      // Group games by week
+                      const gamesByWeek = {};
+                      games.forEach(game => {
+                        if (!game.date) return;
+                        const monday = getMonday(game.date).toISOString().split('T')[0];
+                        if (!gamesByWeek[monday]) {
+                          gamesByWeek[monday] = [];
+                        }
+                        gamesByWeek[monday].push(game);
+                      });
+
+                      // Get latest week or current week
+                      const weeks = Object.keys(gamesByWeek).sort().reverse();
+                      const currentWeekStart = weeks[0];
+                      const currentWeekGames = gamesByWeek[currentWeekStart] || [];
+
+                      // Initialize daily counts and games (Mon-Sun)
+                      const dailyCounts = [0, 0, 0, 0, 0, 0, 0];
+                      const dailyGames = [[], [], [], [], [], [], []];
+                      const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+
+                      currentWeekGames.forEach(game => {
+                        const date = new Date(game.date);
+                        // getDay(): 0=Sun, 1=Mon... 6=Sat
+                        // Map to 0=Mon... 6=Sun
+                        let dayIndex = date.getDay() - 1;
+                        if (dayIndex === -1) dayIndex = 6; // Sunday
+                        dailyCounts[dayIndex]++;
+                        dailyGames[dayIndex].push(game);
+                      });
+
+                      const maxGames = Math.max(...dailyCounts, 1); // Avoid division by zero
+
+                      return (
+                        <div className="mb-8 bg-white p-6 rounded-lg shadow border border-gray-100">
+                          <div className="flex items-center justify-between mb-6">
+                            <div>
+                              <h2 className="text-xl font-bold text-gray-800 flex items-center gap-2">
+                                <TrendingUp size={20} className="text-blue-600" />
+                                Weekly Activity
+                              </h2>
+                              <p className="text-sm text-gray-500 mt-1">
+                                Week of {new Date(currentWeekStart).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} - {new Date(new Date(currentWeekStart).getTime() + 6 * 24 * 60 * 60 * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                              </p>
+                            </div>
+                            <div className="bg-blue-50 px-3 py-1 rounded-full text-blue-700 text-sm font-semibold">
+                              {currentWeekGames.length} Games Played
+                            </div>
+                          </div>
+
+                          <div className="grid grid-cols-7 gap-2 h-32 items-end">
+                            {dailyCounts.map((count, i) => (
+                              <div key={i} className="flex flex-col items-center gap-2 h-full justify-end group">
+                                <div className="relative w-full flex justify-center items-end h-full">
+                                  <div
+                                    className={`w-full max-w-[30px] rounded-t-lg transition-all duration-500 flex items-end justify-center pb-1 ${count > 0 ? 'bg-blue-500 hover:bg-blue-600' : 'bg-gray-100'
+                                      }`}
+                                    style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '20px' : '4px' }}
+                                  >
+                                    {count > 0 && (
+                                      <span className="text-xs font-bold text-white mb-1">{count}</span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="text-xs font-medium text-gray-500">{days[i]}</div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-sm bg-white dark:bg-gray-800 rounded shadow">
+                        <thead>
+                          <tr className="bg-blue-600 dark:bg-blue-700 text-white">
+                            <th className="p-3 text-left">Rank</th>
+                            <th className="p-3 text-left">Player</th>
+                            <th className="p-3 text-center">Games</th>
+                            <th className="p-3 text-center">Wins</th>
+                            <th className="p-3 text-right">Total Buy-In</th>
+                            <th className="p-3 text-right">Total Buy-Out</th>
+                            <th className="p-3 text-right">Total Net P/L</th>
+                            <th className="p-3 text-center">Win Rate</th>
+                            <th className="p-3 text-right">Actual Value</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {(() => {
+                            const playerStats = {};
+                            games.forEach(game => {
+                              if (game.players) {
+                                game.players.forEach(player => {
+                                  const key = player.name.toLowerCase().trim();
+                                  const fullName = player.fullName || getPlayerFullName(player.name);
+                                  if (!playerStats[key]) {
+                                    playerStats[key] = {
+                                      name: player.name,
+                                      fullName: fullName,
+                                      totalBuyIn: 0,
+                                      totalBuyOut: 0,
+                                      totalNet: 0,
+                                      games: 0,
+                                      wins: 0
+                                    };
+                                  }
+                                  playerStats[key].totalBuyIn += player.buyIn || 0;
+                                  playerStats[key].totalBuyOut += player.buyOut || 0;
+                                  playerStats[key].totalNet += player.net || 0;
+                                  playerStats[key].games += 1;
+                                  if (game.winner.toLowerCase().trim() === key) {
+                                    playerStats[key].wins += 1;
+                                  }
+                                });
+                              }
+                            });
+
+                            // Calculate rounded actual values with adjustment
+                            const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
+
+                            // Calculate actual values and rounding differences
+                            players.forEach(p => {
+                              p.actualValue = p.totalNet / 100; // Convert to rupees
+                              p.roundedValue = Math.round(p.actualValue); // Round to nearest rupee
+                              p.roundingDiff = p.actualValue - p.roundedValue; // Difference
+                            });
+
+                            // Calculate total rounding difference
+                            const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+
+                            // Adjust the player with largest absolute value to absorb the rounding difference
+                            if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+                              // Find player with largest absolute net value
+                              const largestPlayer = players.reduce((max, p) =>
+                                Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+                              );
+                              largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+                            }
+
+                            return players.map((p, i) => {
+                              const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
+
+                              return (
+                                <tr key={i} className="border-b hover:bg-blue-50">
+                                  <td className="p-3 text-center">
+                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                      i === 1 ? 'bg-gray-300 text-gray-700' :
+                                        i === 2 ? 'bg-orange-400 text-orange-900' :
+                                          'bg-gray-100 text-gray-600'
+                                      }`}>
+                                      {i + 1}
+                                    </span>
+                                  </td>
+                                  <td className="p-3">
+                                    <div className="font-bold">{p.fullName}</div>
+                                    <div className="text-xs text-gray-500">{p.name}</div>
+                                  </td>
+                                  <td className="p-3 text-center">{p.games}</td>
+                                  <td className="p-3 text-center">
+                                    <span className="px-2 py-1 bg-green-100 text-green-800 rounded font-semibold">
+                                      {p.wins}
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyIn.toLocaleString()}</td>
+                                  <td className="p-3 text-right text-gray-700">₹{p.totalBuyOut.toLocaleString()}</td>
+                                  <td className={`p-3 text-right font-bold ${p.totalNet > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
+                                  </td>
+                                  <td className="p-3 text-center">
+                                    <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
+                                      parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
+                                        'bg-red-100 text-red-800'
+                                      }`}>
+                                      {winRate}%
+                                    </span>
+                                  </td>
+                                  <td className="p-3 text-right">
+                                    <div className={`font-semibold ${p.roundedValue > 0 ? 'text-green-600' :
+                                      p.roundedValue < 0 ? 'text-red-600' :
+                                        'text-gray-600'
+                                      }`}>
+                                      {p.roundedValue > 0 ? '+' : ''}₹{p.roundedValue}
+                                    </div>
+                                    {Math.abs(p.roundingDiff) > 0.01 && (
+                                      <div className="text-xs text-gray-500">
+                                        (was ₹{p.actualValue.toFixed(2)})
+                                      </div>
+                                    )}
+                                  </td>
+                                </tr>
+                              );
+                            });
+                          })()}
+                        </tbody>
+                      </table>
+                    </div>
                   </div>
                 </div>
 
