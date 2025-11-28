@@ -1,180 +1,171 @@
 import React, { useState, useEffect } from 'react';
-import { Download, Trash2, AlertCircle, CheckCircle, TrendingUp, TrendingDown, Upload, ArrowRight, Database, Save } from 'lucide-react';
+import {
+  Download,
+  Trash2,
+  AlertCircle,
+  CheckCircle,
+  TrendingUp,
+  TrendingDown,
+  Upload,
+  ArrowRight,
+  Database,
+  Save,
+  Cloud,
+  Settings,
+  Users,
+  Calendar
+} from 'lucide-react';
+import { db } from './db';
+import {
+  saveCredentials,
+  hasCredentials,
+  uploadGame,
+  fetchAllGames,
+  clearCredentials
+} from './lib/supabase';
 
 // IndexedDB Database
 const DB_NAME = 'PokerNowDB';
 const DB_VERSION = 1;
 
-class PokerDatabase {
-  constructor() {
-    this.db = null;
-  }
+// PokerDatabase class removed - imported from ./db
 
-  async init() {
-    return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
-      request.onerror = () => reject(request.error);
-      request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
-      };
-      request.onupgradeneeded = (event) => {
-        const db = event.target.result;
-        if (!db.objectStoreNames.contains('games')) {
-          const store = db.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
-          store.createIndex('gameId', 'gameId', { unique: true });
-        }
-      };
-    });
-  }
+// const DB_NAME = 'PokerNowDB'; // No longer needed, db is imported
+// const DB_VERSION = 1; // No longer needed, db is imported
 
-  async saveGame(gameData) {
-    return new Promise((resolve, reject) => {
-      // First check if game already exists
-      const checkTransaction = this.db.transaction(['games'], 'readonly');
-      const checkStore = checkTransaction.objectStore('games');
-      const checkIndex = checkStore.index('gameId');
-      const checkRequest = checkIndex.get(gameData.gameId);
+// class PokerDatabase { // No longer needed, db is imported
+//   constructor() {
+//     this.db = null;
+//   }
 
-      checkRequest.onsuccess = () => {
-        if (checkRequest.result) {
-          console.log('Game already exists:', gameData.gameId);
-          resolve(checkRequest.result.id);
-          return;
-        }
+//   async init() {
+//     return new Promise((resolve, reject) => {
+//       const request = indexedDB.open(DB_NAME, DB_VERSION);
+//       request.onerror = () => reject(request.error);
+//       request.onsuccess = () => {
+//         this.db = request.result;
+//         resolve(this.db);
+//       };
+//       request.onupgradeneeded = (event) => {
+//         const db = event.target.result;
+//         if (!db.objectStoreNames.contains('games')) {
+//           const store = db.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
+//           store.createIndex('gameId', 'gameId', { unique: true });
+//         }
+//       };
+//     });
+//   }
 
-        // Game doesn't exist, add it
-        const addTransaction = this.db.transaction(['games'], 'readwrite');
-        const addStore = addTransaction.objectStore('games');
+//   async saveGame(gameData) {
+//     return new Promise((resolve, reject) => {
+//       // First check if game already exists
+//       const checkTransaction = this.db.transaction(['games'], 'readonly');
+//       const checkStore = checkTransaction.objectStore('games');
+//       const checkIndex = checkStore.index('gameId');
+//       const checkRequest = checkIndex.get(gameData.gameId);
 
-        addTransaction.onerror = (event) => {
-          console.error('Add transaction error:', event.target.error);
-          reject(event.target.error);
-        };
+//       checkRequest.onsuccess = () => {
+//         if (checkRequest.result) {
+//           console.log('Game already exists:', gameData.gameId);
+//           resolve(checkRequest.result.id);
+//           return;
+//         }
 
-        const addRequest = addStore.add(gameData);
+//         // Game doesn't exist, add it
+//         const addTransaction = this.db.transaction(['games'], 'readwrite');
+//         const addStore = addTransaction.objectStore('games');
 
-        addRequest.onsuccess = () => {
-          console.log('✓ Game saved successfully with ID:', addRequest.result);
-          resolve(addRequest.result);
-        };
+//         addTransaction.onerror = (event) => {
+//           console.error('Add transaction error:', event.target.error);
+//           reject(event.target.error);
+//         };
 
-        addRequest.onerror = (event) => {
-          console.error('✗ Add request error:', event.target.error);
-          reject(event.target.error);
-        };
-      };
+//         const addRequest = addStore.add(gameData);
 
-      checkRequest.onerror = () => {
-        console.error('Check request error, attempting to add anyway');
-        // Try to add anyway
-        const addTransaction = this.db.transaction(['games'], 'readwrite');
-        const addStore = addTransaction.objectStore('games');
-        const addRequest = addStore.add(gameData);
+//         addRequest.onsuccess = () => {
+//           console.log('✓ Game saved successfully with ID:', addRequest.result);
+//           resolve(addRequest.result);
+//         };
 
-        addRequest.onsuccess = () => {
-          console.log('✓ Game saved successfully with ID:', addRequest.result);
-          resolve(addRequest.result);
-        };
+//         addRequest.onerror = (event) => {
+//           console.error('✗ Add request error:', event.target.error);
+//           reject(event.target.error);
+//         };
+//       };
 
-        addRequest.onerror = (event) => {
-          console.error('✗ Add request error:', event.target.error);
-          reject(event.target.error);
-        };
-      };
-    });
-  }
+//       checkRequest.onerror = () => {
+//         console.error('Check request error, attempting to add anyway');
+//         // Try to add anyway
+//         const addTransaction = this.db.transaction(['games'], 'readwrite');
+//         const addStore = addTransaction.objectStore('games');
+//         const addRequest = addStore.add(gameData);
 
-  async getAllGames() {
-    const transaction = this.db.transaction(['games'], 'readonly');
-    const store = transaction.objectStore('games');
-    const request = store.getAll();
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve(request.result);
-      request.onerror = () => reject(request.error);
-    });
-  }
+//         addRequest.onsuccess = () => {
+//           console.log('✓ Game saved successfully with ID:', addRequest.result);
+//           resolve(addRequest.result);
+//         };
 
-  async getGameByGameId(gameId) {
-    return new Promise((resolve, reject) => {
-      try {
-        const transaction = this.db.transaction(['games'], 'readonly');
-        const store = transaction.objectStore('games');
-        const index = store.index('gameId');
-        const request = index.get(gameId);
+//         addRequest.onerror = (event) => {
+//           console.error('✗ Add request error:', event.target.error);
+//           reject(event.target.error);
+//         };
+//       };
+//     });
+//   }
 
-        request.onsuccess = () => {
-          resolve(request.result || null);
-        };
+//   async getAllGames() {
+//     const transaction = this.db.transaction(['games'], 'readonly');
+//     const store = transaction.objectStore('games');
+//     const request = store.getAll();
+//     return new Promise((resolve, reject) => {
+//       request.onsuccess = () => resolve(request.result);
+//       request.onerror = () => reject(request.error);
+//     });
+//   }
 
-        request.onerror = () => {
-          resolve(null);
-        };
-      } catch (error) {
-        console.error('getGameByGameId error:', error);
-        resolve(null);
-      }
-    });
-  }
+//   async getGameByGameId(gameId) {
+//     return new Promise((resolve, reject) => {
+//       try {
+//         const transaction = this.db.transaction(['games'], 'readonly');
+//         const store = transaction.objectStore('games');
+//         const index = store.index('gameId');
+//         const request = index.get(gameId);
 
-  async deleteGame(id) {
-    const transaction = this.db.transaction(['games'], 'readwrite');
-    const store = transaction.objectStore('games');
-    const request = store.delete(id);
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
+//         request.onsuccess = () => {
+//           resolve(request.result || null);
+//         };
 
-  async clearAllData() {
-    const transaction = this.db.transaction(['games'], 'readwrite');
-    const store = transaction.objectStore('games');
-    const request = store.clear();
-    return new Promise((resolve, reject) => {
-      request.onsuccess = () => resolve();
-      request.onerror = () => reject(request.error);
-    });
-  }
+//         request.onerror = () => {
+//           resolve(null);
+//         };
+//       } catch (error) {
+//         console.error('getGameByGameId error:', error);
+//         resolve(null);
+//       }
+//     });
+//   }
 
-  async exportToJSON() {
-    const games = await this.getAllGames();
-    return {
-      version: DB_VERSION,
-      exportDate: new Date().toISOString(),
-      games: games,
-      gameCount: games.length,
-      appName: 'PokerNow Reporter'
-    };
-  }
+//   async deleteGame(id) {
+//     const transaction = this.db.transaction(['games'], 'readwrite');
+//     const store = transaction.objectStore('games');
+//     const request = store.delete(id);
+//     return new Promise((resolve, reject) => {
+//       request.onsuccess = () => resolve();
+//       request.onerror = () => reject(request.error);
+//     });
+//   }
 
-  async importFromJSON(jsonData) {
-    if (!jsonData.games || !Array.isArray(jsonData.games)) {
-      throw new Error('Invalid backup file format');
-    }
+//   async clearAllData() {
+//     const transaction = this.db.transaction(['games'], 'readwrite');
+// PokerDatabase class removed - imported from ./db
 
-    // Clear existing data first
-    await this.clearAllData();
-
-    // Import each game
-    for (const game of jsonData.games) {
-      // Remove the database ID to let it auto-generate
-      const gameToImport = { ...game };
-      delete gameToImport.id;
-      await this.saveGame(gameToImport);
-    }
-
-    return jsonData.games.length;
-  }
-}
-
-const db = new PokerDatabase();
-
-export default function PokerNowReporter() {
+function App() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState({ type: '', text: '' });
-  const [isInitialized, setIsInitialized] = useState(false);
+  const [message, setMessage] = useState(null);
+  const [showCloudModal, setShowCloudModal] = useState(false);
+  const [isCloudConnected, setIsCloudConnected] = useState(hasCredentials());
+  const [syncing, setSyncing] = useState(false);
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupData, setBackupData] = useState('');
 
@@ -196,24 +187,42 @@ export default function PokerNowReporter() {
   };
 
   useEffect(() => {
-    initializeApp();
+    loadGames();
   }, []);
 
-  const initializeApp = async () => {
+  const loadGames = async () => {
     try {
-      console.log('🔄 Initializing database...');
-      await db.init();
-      console.log('✓ Database initialized');
+      // 1. Load local games
+      const localGames = await db.getAllGames();
+      let allGames = [...localGames];
 
-      const dbGames = await db.getAllGames();
-      console.log('✓ Loaded games from DB:', dbGames.length);
-      console.log('Games data:', dbGames);
+      // 2. If connected, load cloud games and merge
+      if (isCloudConnected) {
+        try {
+          const cloudGames = await fetchAllGames();
 
-      setGames(dbGames);
-      setIsInitialized(true);
+          // Merge logic: Add cloud games that aren't in local
+          const localIds = new Set(localGames.map(g => g.gameId));
+          const newFromCloud = cloudGames.filter(g => !localIds.has(g.gameId));
 
-      if (dbGames.length > 0) {
-        showMessage('success', `Database loaded: ${dbGames.length} games`);
+          if (newFromCloud.length > 0) {
+            console.log(`Found ${newFromCloud.length} new games from cloud`);
+            // Save to local DB for offline access
+            for (const game of newFromCloud) {
+              await db.saveGame(game);
+            }
+            allGames = [...localGames, ...newFromCloud];
+          }
+        } catch (err) {
+          console.error('Cloud fetch error:', err);
+          showMessage('error', 'Failed to fetch from cloud: ' + err.message);
+        }
+      }
+
+      setGames(allGames.sort((a, b) => new Date(b.date) - new Date(a.date)));
+
+      if (allGames.length > 0) {
+        showMessage('success', `Database loaded: ${allGames.length} games`);
       }
     } catch (error) {
       console.error('❌ Init error:', error);
@@ -371,6 +380,20 @@ export default function PokerNowReporter() {
 
           console.log('Saving game:', gameData);
           await db.saveGame(gameData);
+
+          // Upload to cloud if connected
+          if (isCloudConnected) {
+            try {
+              console.log('Uploading to cloud...');
+              const result = await uploadGame(gameData);
+              console.log('Cloud upload result:', result);
+            } catch (cloudError) {
+              console.error('Cloud upload failed:', cloudError);
+              // Don't fail the whole process, just log it
+              errors.push(`${file.name} (Cloud upload failed: ${cloudError.message})`);
+            }
+          }
+
           successCount++;
           console.log('Game saved successfully');
         } catch (error) {
@@ -615,8 +638,89 @@ export default function PokerNowReporter() {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-700 p-6">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-gray-50 p-8 font-sans text-gray-900">
+      <div className="max-w-6xl mx-auto">
+        <header className="mb-12 text-center relative">
+          <div className="absolute right-0 top-0">
+            <button
+              onClick={() => setShowCloudModal(true)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${isCloudConnected
+                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                }`}
+            >
+              {isCloudConnected ? <Cloud size={16} /> : <Database size={16} />}
+              {isCloudConnected ? 'Cloud Synced' : 'Setup Cloud'}
+            </button>
+          </div>
+
+          <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-4">
+            PokerNow Reporter
+          </h1>
+          <p className="text-gray-600 text-lg">Track your game statistics and settlements</p>
+        </header>
+
+        {/* Cloud Settings Modal */}
+        {showCloudModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-8 max-w-md w-full shadow-2xl">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <Cloud className="text-blue-600" /> Cloud Database
+                </h2>
+                <button onClick={() => setShowCloudModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+
+              {isCloudConnected ? (
+                <div className="text-center">
+                  <div className="bg-green-50 text-green-800 p-4 rounded mb-6">
+                    <CheckCircle className="mx-auto mb-2" size={32} />
+                    <p className="font-semibold">Connected to Supabase</p>
+                    <p className="text-sm mt-1">Your games are safe in the cloud.</p>
+                  </div>
+                  <button
+                    onClick={handleDisconnect}
+                    className="w-full py-2 px-4 bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium"
+                  >
+                    Disconnect
+                  </button>
+                </div>
+              ) : (
+                <form onSubmit={handleCloudConnect}>
+                  <div className="mb-4">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Supabase URL</label>
+                    <input
+                      name="url"
+                      type="text"
+                      required
+                      placeholder="https://xyz.supabase.co"
+                      className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <div className="mb-6">
+                    <label className="block text-sm font-medium text-gray-700 mb-1">Supabase Anon Key</label>
+                    <input
+                      name="key"
+                      type="password"
+                      required
+                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                      className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                    />
+                  </div>
+                  <button
+                    type="submit"
+                    className="w-full py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold shadow-lg transition-transform transform hover:-translate-y-0.5"
+                  >
+                    Connect Database
+                  </button>
+                  <p className="text-xs text-gray-500 mt-4 text-center">
+                    Create a free project at <a href="https://supabase.com" target="_blank" className="text-blue-600 hover:underline">supabase.com</a>
+                  </p>
+                </form>
+              )}
+            </div>
+          </div>
+        )}
         <div className="bg-white rounded-lg shadow-2xl overflow-hidden">
           <div className="bg-gradient-to-r from-green-600 to-green-500 p-6 text-white">
             <h1 className="text-3xl font-bold">PokerNow Game Reporter</h1>
@@ -1152,9 +1256,9 @@ export default function PokerNowReporter() {
 
                       return (
                         <div key={i} className={`bg-white p-4 rounded shadow mb-4 border-l-4 ${savedStatus === 'paid' ? 'border-green-500' :
-                            savedStatus === 'adjusted_players' ? 'border-blue-500' :
-                              savedStatus === 'adjusted_offline' ? 'border-purple-500' :
-                                'border-yellow-500'
+                          savedStatus === 'adjusted_players' ? 'border-blue-500' :
+                            savedStatus === 'adjusted_offline' ? 'border-purple-500' :
+                              'border-yellow-500'
                           }`}>
                           <div className="flex flex-col md:flex-row justify-between items-center gap-4">
                             <div className="flex items-center gap-4 flex-1">
