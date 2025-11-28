@@ -1385,6 +1385,117 @@ export default function PokerNowReporter() {
                 );
               })()}
 
+              {/* Player Statistics Dashboard */}
+              {(() => {
+                if (games.length === 0) return null;
+
+                const playerStats = {};
+                games.forEach(game => {
+                  if (game.players) {
+                    game.players.forEach(player => {
+                      const key = player.name.toLowerCase().trim();
+                      const fullName = player.fullName || getPlayerFullName(player.name);
+                      if (!playerStats[key]) {
+                        playerStats[key] = {
+                          name: player.name,
+                          fullName: fullName,
+                          totalNet: 0,
+                          gamesPlayed: 0,
+                          wins: 0,
+                          bestGame: -Infinity,
+                          worstGame: Infinity,
+                          gameHistory: []
+                        };
+                      }
+                      playerStats[key].totalNet += player.net || 0;
+                      playerStats[key].gamesPlayed += 1;
+                      playerStats[key].gameHistory.push(player.net || 0);
+                      if (player.net > playerStats[key].bestGame) {
+                        playerStats[key].bestGame = player.net;
+                      }
+                      if (player.net < playerStats[key].worstGame) {
+                        playerStats[key].worstGame = player.net;
+                      }
+                      if (game.winner.toLowerCase().trim() === key) {
+                        playerStats[key].wins += 1;
+                      }
+                    });
+                  }
+                });
+
+                const players = Object.values(playerStats).sort((a, b) => b.totalNet - a.totalNet);
+
+                return (
+                  <div className="mb-8 bg-gradient-to-br from-purple-50 to-pink-50 dark:from-purple-900/20 dark:to-pink-900/20 p-6 rounded-lg border-2 border-purple-200 dark:border-purple-700">
+                    <h2 className="text-2xl font-bold mb-6 text-purple-900 dark:text-purple-100 flex items-center gap-2">
+                      <Users size={28} />
+                      Player Statistics
+                    </h2>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                      {players.map((player, idx) => {
+                        const winRate = ((player.wins / player.gamesPlayed) * 100).toFixed(1);
+                        const avgProfit = (player.totalNet / player.gamesPlayed / 100).toFixed(2);
+                        const isPositive = player.totalNet > 0;
+
+                        return (
+                          <div key={idx} className="bg-white dark:bg-gray-800 rounded-lg p-4 shadow-md hover:shadow-xl transition-shadow border border-gray-200 dark:border-gray-700">
+                            <div className="flex items-start justify-between mb-3">
+                              <div className="flex-1">
+                                <h3 className="font-bold text-lg text-gray-900 dark:text-white">{player.fullName}</h3>
+                                <p className="text-xs text-gray-500 dark:text-gray-400">{player.name}</p>
+                              </div>
+                              <div className={`w-12 h-12 rounded-full flex items-center justify-center text-2xl font-bold ${isPositive ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'}`}>
+                                {player.fullName.charAt(0)}
+                              </div>
+                            </div>
+
+                            <div className="space-y-2">
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Total Profit</span>
+                                <span className={`font-bold text-lg ${isPositive ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {isPositive ? '+' : ''}₹{(player.totalNet / 100).toFixed(2)}
+                                </span>
+                              </div>
+
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Games Played</span>
+                                <span className="font-semibold text-gray-900 dark:text-white">{player.gamesPlayed}</span>
+                              </div>
+
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Win Rate</span>
+                                <span className="font-semibold text-blue-600 dark:text-blue-400">{winRate}%</span>
+                              </div>
+
+                              <div className="flex justify-between items-center">
+                                <span className="text-sm text-gray-600 dark:text-gray-400">Avg/Game</span>
+                                <span className={`font-semibold ${parseFloat(avgProfit) > 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
+                                  {parseFloat(avgProfit) > 0 ? '+' : ''}₹{avgProfit}
+                                </span>
+                              </div>
+
+                              <div className="pt-2 border-t border-gray-200 dark:border-gray-700">
+                                <div className="flex justify-between text-xs">
+                                  <div>
+                                    <div className="text-gray-500 dark:text-gray-400">Best</div>
+                                    <div className="font-semibold text-green-600 dark:text-green-400">+₹{(player.bestGame / 100).toFixed(2)}</div>
+                                  </div>
+                                  <div className="text-right">
+                                    <div className="text-gray-500 dark:text-gray-400">Worst</div>
+                                    <div className="font-semibold text-red-600 dark:text-red-400">₹{(player.worstGame / 100).toFixed(2)}</div>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               {/* Weekly Activity Chart */}
               {(() => {
                 if (games.length === 0) return null;
@@ -1751,6 +1862,6 @@ export default function PokerNowReporter() {
         )}
       </div>
     </div>
-    </div>
+    </div >
   );
 }
