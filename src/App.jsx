@@ -327,6 +327,7 @@ export default function PokerNowReporter() {
 
     setLoading({ current: 0, total: files.length });
     const errors = [];
+    const skipped = [];
     let successCount = 0;
 
     try {
@@ -336,6 +337,16 @@ export default function PokerNowReporter() {
         setLoading({ current: i + 1, total: files.length });
 
         try {
+          // Check for duplicate game ID before processing
+          const gameId = file.name.replace('.csv', '').replace('ledger_', '');
+
+          // Check if game already exists in current state
+          if (games.some(g => g.gameId === gameId)) {
+            console.log(`Skipping duplicate game: ${gameId}`);
+            skipped.push(file.name);
+            continue;
+          }
+
           const text = await file.text();
           console.log('File text length:', text.length);
           console.log('First 200 chars:', text.substring(0, 200));
@@ -346,8 +357,6 @@ export default function PokerNowReporter() {
 
           const analysis = analyzeGameData(csvData);
           console.log('Analysis:', analysis);
-
-          const gameId = file.name.replace('.csv', '').replace('ledger_', '');
 
           const gameData = {
             gameId,
@@ -376,10 +385,17 @@ export default function PokerNowReporter() {
       console.log('Loaded games:', dbGames.length, dbGames);
       setGames(dbGames);
 
+      let msg = '';
+      if (successCount > 0) msg += `Successfully added ${successCount} game${successCount > 1 ? 's' : ''}. `;
+      if (skipped.length > 0) msg += `Skipped ${skipped.length} duplicate${skipped.length > 1 ? 's' : ''}. `;
+      if (errors.length > 0) msg += `Failed: ${errors.length} file${errors.length > 1 ? 's' : ''}.`;
+
       if (errors.length > 0) {
-        showMessage('error', `${successCount} added, ${errors.length} failed: ${errors.join(', ')}`);
+        showMessage('error', msg + ` Errors: ${errors.join(', ')}`);
+      } else if (skipped.length > 0 && successCount === 0) {
+        showMessage('info', msg);
       } else {
-        showMessage('success', `Successfully added ${successCount} game${successCount > 1 ? 's' : ''}!`);
+        showMessage('success', msg);
       }
 
       event.target.value = '';
