@@ -1585,14 +1585,23 @@ export default function PokerNowReporter() {
                     return settlements.map((s, i) => {
                       const settlementKey = `${s.from}-${s.to}`;
                       const currentStatus = settlements[settlementKey]?.status || 'pending';
+                      const isDebtor = profile?.player_name === s.from;
+                      const isCreditor = profile?.player_name === s.to;
 
                       const getStatusColor = (status) => {
                         switch (status) {
                           case 'paid': return 'bg-green-100 text-green-800 border-green-200';
+                          case 'payment_sent': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
                           case 'adjusted': return 'bg-blue-100 text-blue-800 border-blue-200';
                           case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
-                          default: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
+                          default: return 'bg-gray-100 text-gray-800 border-gray-200';
                         }
+                      };
+
+                      const formatStatus = (status) => {
+                        if (status === 'payment_sent') return 'Payment Sent';
+                        if (status === 'adjusted_offline') return 'Adj. (Offline)';
+                        return status.charAt(0).toUpperCase() + status.slice(1);
                       };
 
                       return (
@@ -1603,19 +1612,49 @@ export default function PokerNowReporter() {
                             <span className="font-bold text-green-600">{s.to}</span>
                           </div>
 
-                          <div className="flex items-center gap-4">
-                            <span className="text-xl font-bold text-orange-600">₹{s.actualValue}</span>
+                          <div className="flex items-center gap-3 flex-wrap justify-end">
+                            <span className="text-xl font-bold text-orange-600 mr-2">₹{s.actualValue}</span>
 
+                            {/* Role-based Actions */}
+                            {isDebtor && currentStatus === 'pending' && (
+                              <button
+                                onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'payment_sent')}
+                                className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm"
+                              >
+                                Mark Paid
+                              </button>
+                            )}
+
+                            {isCreditor && currentStatus === 'payment_sent' && (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'paid')}
+                                  className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors shadow-sm"
+                                >
+                                  Confirm
+                                </button>
+                                <button
+                                  onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'pending')}
+                                  className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors shadow-sm"
+                                >
+                                  Reject
+                                </button>
+                              </div>
+                            )}
+
+                            {/* Status Dropdown (Manual Override) */}
                             <select
                               value={currentStatus}
                               onChange={(e) => handleSettlementAction(s.from, s.to, s.amount, e.target.value)}
-                              className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(currentStatus)}`}
+                              className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer ${getStatusColor(currentStatus)}`}
                               disabled={!isCloudConnected}
+                              title="Change status manually"
                             >
                               <option value="pending">Pending</option>
+                              <option value="payment_sent">Payment Sent</option>
                               <option value="paid">Paid</option>
                               <option value="adjusted">Adjusted</option>
-                              <option value="adjusted_offline">Adjusted (Offline)</option>
+                              <option value="adjusted_offline">Adj. (Offline)</option>
                             </select>
                           </div>
                         </div>
