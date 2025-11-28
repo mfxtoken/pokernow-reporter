@@ -40,6 +40,120 @@ export const hasCredentials = () => {
     return !!(localStorage.getItem('supabase_url') && localStorage.getItem('supabase_key'));
 };
 
+// Auth Operations
+
+export const signUp = async (email, password) => {
+    const client = getSupabase();
+    if (!client) throw new Error('Supabase not configured');
+    const { data, error } = await client.auth.signUp({ email, password });
+    if (error) throw error;
+    return data;
+};
+
+export const signIn = async (email, password) => {
+    const client = getSupabase();
+    if (!client) throw new Error('Supabase not configured');
+    const { data, error } = await client.auth.signInWithPassword({ email, password });
+    if (error) throw error;
+    return data;
+};
+
+export const signOut = async () => {
+    const client = getSupabase();
+    if (!client) return;
+    const { error } = await client.auth.signOut();
+    if (error) throw error;
+};
+
+export const getCurrentUser = async () => {
+    const client = getSupabase();
+    if (!client) return null;
+    const { data: { user } } = await client.auth.getUser();
+    return user;
+};
+
+export const onAuthStateChange = (callback) => {
+    const client = getSupabase();
+    if (!client) return null;
+    return client.auth.onAuthStateChange((event, session) => {
+        callback(event, session);
+    });
+};
+
+// Profile Operations
+
+export const getProfile = async (userId) => {
+    const client = getSupabase();
+    if (!client) return null;
+
+    const { data, error } = await client
+        .from('profiles')
+        .select('*')
+        .eq('id', userId)
+        .single();
+
+    if (error && error.code !== 'PGRST116') { // PGRST116 is "Row not found"
+        console.error('Error fetching profile:', error);
+    }
+    return data;
+};
+
+export const updateProfile = async (userId, playerName) => {
+    const client = getSupabase();
+    if (!client) throw new Error('Supabase not configured');
+
+    const { data, error } = await client
+        .from('profiles')
+        .upsert({
+            id: userId,
+            player_name: playerName,
+            updated_at: new Date().toISOString()
+        })
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
+// Settlement Operations
+
+export const getSettlements = async () => {
+    const client = getSupabase();
+    if (!client) return [];
+
+    const { data, error } = await client
+        .from('settlements')
+        .select('*');
+
+    if (error) {
+        console.error('Error fetching settlements:', error);
+        return [];
+    }
+    return data;
+};
+
+export const updateSettlement = async (debtor, creditor, status, amount) => {
+    const client = getSupabase();
+    if (!client) throw new Error('Supabase not configured');
+
+    // We use upsert to handle both creating new status entries and updating existing ones
+    const { data, error } = await client
+        .from('settlements')
+        .upsert({
+            debtor,
+            creditor,
+            status,
+            amount,
+            updated_at: new Date().toISOString()
+        }, { onConflict: 'debtor, creditor' })
+        .select()
+        .single();
+
+    if (error) throw error;
+    return data;
+};
+
 // Database Operations
 
 export const uploadGame = async (gameData) => {

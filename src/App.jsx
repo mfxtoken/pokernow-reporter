@@ -1,27 +1,40 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Download,
-  Trash2,
-  AlertCircle,
-  CheckCircle,
+  Upload,
+  Trophy,
+  Users,
+  Calendar,
+  ArrowRight,
   TrendingUp,
   TrendingDown,
-  Upload,
-  ArrowRight,
-  Database,
-  Save,
+  CheckCircle,
   Cloud,
   Settings,
-  Users,
-  Calendar
+  Database,
+  LogOut,
+  User,
+  Lock,
+  AlertCircle,
+  Save,
+  Download,
+  Trash2
 } from 'lucide-react';
-import { db } from './db';
+import db from './database';
 import {
   saveCredentials,
   hasCredentials,
   uploadGame,
   fetchAllGames,
-  clearCredentials
+  clearCredentials,
+  signIn,
+  signUp,
+  signOut,
+  getCurrentUser,
+  getProfile,
+  updateProfile,
+  onAuthStateChange,
+  getSettlements,
+  updateSettlement
 } from './lib/supabase';
 
 // IndexedDB Database
@@ -169,6 +182,15 @@ function App() {
   const [showBackupModal, setShowBackupModal] = useState(false);
   const [backupData, setBackupData] = useState('');
 
+  // Auth State
+  const [user, setUser] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authMode, setAuthMode] = useState('login'); // 'login' or 'signup'
+  const [authLoading, setAuthLoading] = useState(false);
+  const [showProfileModal, setShowProfileModal] = useState(false);
+  const [settlements, setSettlements] = useState({}); // Store cloud settlements
+
   const playerAliases = {
     'cs': 'Chintan Shah',
     'sas': 'Simal Shah',
@@ -188,7 +210,41 @@ function App() {
 
   useEffect(() => {
     loadGames();
+    checkUser();
+
+    // Listen for auth changes
+    const { data: authListener } = onAuthStateChange(async (event, session) => {
+      if (session?.user) {
+        setUser(session.user);
+        loadProfile(session.user.id);
+      } else {
+        setUser(null);
+        setProfile(null);
+      }
+    });
+
+    return () => {
+      // authListener.subscription.unsubscribe(); // Supabase v2 style
+    };
   }, []);
+
+  const checkUser = async () => {
+    const currentUser = await getCurrentUser();
+    if (currentUser) {
+      setUser(currentUser);
+      loadProfile(currentUser.id);
+    }
+  };
+
+  const loadProfile = async (userId) => {
+    const userProfile = await getProfile(userId);
+    if (userProfile) {
+      setProfile(userProfile);
+    } else {
+      // If no profile, show profile modal to link player name
+      setShowProfileModal(true);
+    }
+  };
 
   const loadGames = async () => {
     try {
@@ -199,9 +255,12 @@ function App() {
       // 2. If connected, load cloud games and merge
       if (isCloudConnected) {
         try {
-          const cloudGames = await fetchAllGames();
+          const [cloudGames, cloudSettlements] = await Promise.all([
+            fetchAllGames(),
+            getSettlements()
+          ]);
 
-          // Merge logic: Add cloud games that aren't in local
+          // Merge games logic: Add cloud games that aren't in local
           const localIds = new Set(localGames.map(g => g.gameId));
           const newFromCloud = cloudGames.filter(g => !localIds.has(g.gameId));
 
@@ -213,6 +272,16 @@ function App() {
             }
             allGames = [...localGames, ...newFromCloud];
           }
+
+          // Process settlements into a map: "debtor-creditor" -> status object
+          const settlementMap = {};
+          if (cloudSettlements) {
+            cloudSettlements.forEach(s => {
+              settlementMap[`${s.debtor}-${s.creditor}`] = s;
+            });
+          }
+          setSettlements(settlementMap);
+
         } catch (err) {
           console.error('Cloud fetch error:', err);
           showMessage('error', 'Failed to fetch from cloud: ' + err.message);
@@ -225,10 +294,67 @@ function App() {
         showMessage('success', `Database loaded: ${allGames.length} games`);
       }
     } catch (error) {
-      console.error('❌ Init error:', error);
-      showMessage('error', 'Database initialization failed');
-      setIsInitialized(true);
+      console.error('Error loading games:', error);
+      showMessage('error', 'Failed to load games');
     }
+  };
+
+  const handleAuth = async (e) => {
+    e.preventDefault();
+    setAuthLoading(true);
+    const formData = new FormData(e.target);
+    const email = formData.get('email');
+    const password = formData.get('password');
+
+    try {
+      if (authMode === 'signup') {
+        await signUp(email, password);
+        showMessage('success', 'Sign up successful! Please check your email.');
+      } else {
+        await signIn(email, password);
+        showMessage('success', 'Logged in successfully!');
+        setShowAuthModal(false);
+      }
+    } catch (error) {
+      showMessage('error', error.message);
+    } finally {
+      setAuthLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await signOut();
+    setUser(null);
+    setProfile(null);
+    showMessage('info', 'Logged out');
+  };
+
+  const handleLinkProfile = async (e) => {
+    e.preventDefault();
+    const formData = new FormData(e.target);
+    const playerName = formData.get('playerName');
+
+    try {
+      await updateProfile(user.id, playerName);
+      setProfile({ ...profile, player_name: playerName });
+      setShowProfileModal(false);
+      showMessage('success', `Profile linked to ${playerName}`);
+    } catch (error) {
+      showMessage('error', 'Failed to link profile: ' + error.message);
+    }
+  };
+
+  // Helper to get all unique player names for the dropdown
+  const getAllPlayerNames = () => {
+    const names = new Set();
+    games.forEach(g => {
+      if (g.players) {
+        g.players.forEach(p => {
+          names.add(p.fullName || getPlayerFullName(p.name));
+        });
+      }
+    });
+    return Array.from(names).sort();
   };
 
   const showMessage = (type, text) => {
@@ -315,6 +441,36 @@ function App() {
       totalPot: totalBuyIn,
       playerCount: players.length
     };
+  };
+
+  const handleSettlementAction = async (debtor, creditor, amount, action) => {
+    if (!isCloudConnected) {
+      showMessage('error', 'Please connect to Cloud Database to verify settlements');
+      return;
+    }
+    if (!profile) {
+      showMessage('error', 'Please link your profile to verify settlements');
+      return;
+    }
+
+    let newStatus;
+    if (action === 'pay') newStatus = 'pending_approval';
+    if (action === 'approve') newStatus = 'paid';
+    if (action === 'reject') newStatus = 'rejected';
+
+    try {
+      await updateSettlement(debtor, creditor, newStatus, amount);
+
+      // Update local state immediately
+      setSettlements(prev => ({
+        ...prev,
+        [`${debtor}-${creditor}`]: { debtor, creditor, status: newStatus, amount }
+      }));
+
+      showMessage('success', `Settlement updated: ${newStatus.replace('_', ' ')}`);
+    } catch (error) {
+      showMessage('error', 'Failed to update settlement: ' + error.message);
+    }
   };
 
   const handleFileUpload = async (event) => {
@@ -641,12 +797,36 @@ function App() {
     <div className="min-h-screen bg-gray-50 p-8 font-sans text-gray-900">
       <div className="max-w-6xl mx-auto">
         <header className="mb-12 text-center relative">
-          <div className="absolute right-0 top-0">
+          <div className="absolute right-0 top-0 flex gap-2">
+            {/* Auth Button */}
+            {user ? (
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-gray-600 hidden md:inline">
+                  {profile?.player_name || user.email}
+                </span>
+                <button
+                  onClick={handleLogout}
+                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
+                >
+                  <LogOut size={16} />
+                  Logout
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => setShowAuthModal(true)}
+                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
+              >
+                <User size={16} />
+                Login
+              </button>
+            )}
+
             <button
               onClick={() => setShowCloudModal(true)}
               className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${isCloudConnected
-                  ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                  : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
+                ? 'bg-green-100 text-green-700 hover:bg-green-200'
+                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
                 }`}
             >
               {isCloudConnected ? <Cloud size={16} /> : <Database size={16} />}
@@ -659,6 +839,91 @@ function App() {
           </h1>
           <p className="text-gray-600 text-lg">Track your game statistics and settlements</p>
         </header>
+
+        {/* Auth Modal */}
+        {showAuthModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-8 max-w-md w-full shadow-2xl">
+              <div className="flex justify-between items-center mb-6">
+                <h2 className="text-2xl font-bold flex items-center gap-2">
+                  <User className="text-blue-600" /> {authMode === 'login' ? 'Login' : 'Sign Up'}
+                </h2>
+                <button onClick={() => setShowAuthModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
+              </div>
+
+              <form onSubmit={handleAuth}>
+                <div className="mb-4">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
+                  <input
+                    name="email"
+                    type="email"
+                    required
+                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
+                  <input
+                    name="password"
+                    type="password"
+                    required
+                    minLength={6}
+                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+                <button
+                  type="submit"
+                  disabled={authLoading}
+                  className="w-full py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold shadow-lg transition-transform transform hover:-translate-y-0.5 disabled:opacity-50"
+                >
+                  {authLoading ? 'Processing...' : (authMode === 'login' ? 'Login' : 'Sign Up')}
+                </button>
+
+                <div className="mt-4 text-center text-sm">
+                  {authMode === 'login' ? (
+                    <p>Don't have an account? <button type="button" onClick={() => setAuthMode('signup')} className="text-blue-600 font-semibold hover:underline">Sign Up</button></p>
+                  ) : (
+                    <p>Already have an account? <button type="button" onClick={() => setAuthMode('login')} className="text-blue-600 font-semibold hover:underline">Login</button></p>
+                  )}
+                </div>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Profile Linking Modal */}
+        {showProfileModal && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+            <div className="bg-white rounded-lg p-8 max-w-md w-full shadow-2xl">
+              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
+                <Users className="text-blue-600" /> Who are you?
+              </h2>
+              <p className="text-gray-600 mb-6">Link your account to a player profile to see personalized stats.</p>
+
+              <form onSubmit={handleLinkProfile}>
+                <div className="mb-6">
+                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Player Name</label>
+                  <select
+                    name="playerName"
+                    required
+                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
+                  >
+                    <option value="">-- Select your name --</option>
+                    {getAllPlayerNames().map(name => (
+                      <option key={name} value={name}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                <button
+                  type="submit"
+                  className="w-full py-3 bg-green-600 text-white rounded hover:bg-green-700 font-bold shadow-lg"
+                >
+                  Link Profile
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
 
         {/* Cloud Settings Modal */}
         {showCloudModal && (
@@ -1066,8 +1331,8 @@ function App() {
                                   style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '4px' : '4px' }}
                                 >
                                   {count > 0 && (
-                                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
-                                      {count} game{count !== 1 ? 's' : ''}
+                                    <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-100 transition-opacity whitespace-nowrap z-10">
+                                      {count}
                                     </div>
                                   )}
                                 </div>
@@ -1209,8 +1474,8 @@ function App() {
                 <div className="mb-8 bg-orange-50 p-6 rounded-lg">
                   <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
                   {(() => {
-                    const settlements = calculateSettlements();
-                    if (settlements.length === 0) {
+                    const calculatedSettlements = calculateSettlements();
+                    if (calculatedSettlements.length === 0) {
                       return <p className="text-center text-gray-600">All even!</p>;
                     }
 
@@ -1229,80 +1494,100 @@ function App() {
                       }
                     });
 
-                    return settlements.map((s, i) => {
-                      // Generate unique ID for settlement to track status
-                      const settlementId = `${s.from}-${s.to}-${s.amount}`;
+                    return calculatedSettlements.map((s, i) => {
+                      const debtor = { name: s.from, fullName: getPlayerFullName(s.from), totalNet: Object.values(playerTotals).find(p => p.fullName === s.from)?.totalNet || 0 };
+                      const creditor = { name: s.to, fullName: getPlayerFullName(s.to), totalNet: Object.values(playerTotals).find(p => p.fullName === s.to)?.totalNet || 0 };
+                      const amount = s.actualValue;
 
-                      // Get saved status or default to 'pending'
-                      const savedStatus = localStorage.getItem(`settlement_${settlementId}`) || 'pending';
+                      const settlementKey = `${debtor.name}-${creditor.name}`;
+                      const cloudSettlement = settlements[settlementKey];
+                      const status = cloudSettlement?.status || 'pending';
 
-                      const handleStatusChange = (e) => {
-                        const newStatus = e.target.value;
-                        localStorage.setItem(`settlement_${settlementId}`, newStatus);
-                        // Force re-render (in a real app, use state, but here we rely on React's re-render from parent or use a dummy state)
-                        window.dispatchEvent(new Event('storage')); // Trigger update
-                        // For this simple implementation, we might need a state to force update
-                        setGames([...games]); // Hack to force re-render
-                      };
-
-                      const getStatusColor = (status) => {
-                        switch (status) {
-                          case 'paid': return 'bg-green-100 text-green-800 border-green-200';
-                          case 'adjusted_players': return 'bg-blue-100 text-blue-800 border-blue-200';
-                          case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
-                          default: return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-                        }
-                      };
+                      // Determine if current user is involved
+                      const isDebtor = profile && profile.player_name === debtor.name;
+                      const isCreditor = profile && profile.player_name === creditor.name;
 
                       return (
-                        <div key={i} className={`bg-white p-4 rounded shadow mb-4 border-l-4 ${savedStatus === 'paid' ? 'border-green-500' :
-                          savedStatus === 'adjusted_players' ? 'border-blue-500' :
-                            savedStatus === 'adjusted_offline' ? 'border-purple-500' :
-                              'border-yellow-500'
-                          }`}>
-                          <div className="flex flex-col md:flex-row justify-between items-center gap-4">
-                            <div className="flex items-center gap-4 flex-1">
-                              <div className="text-center">
-                                <span className="font-bold text-red-600 block text-lg">{s.from}</span>
-                                <span className="text-xs text-gray-500">
-                                  Total: <span className="text-red-600">
-                                    {Object.values(playerTotals).find(p => p.fullName === s.from)?.totalNet < 0
-                                      ? `₹${(Object.values(playerTotals).find(p => p.fullName === s.from)?.totalNet / 100).toFixed(0)}`
-                                      : 'Error'}
-                                  </span>
-                                </span>
-                              </div>
+                        <div key={i} className="bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col gap-3">
+                          <div className="flex justify-between items-center">
+                            <div className="flex items-center gap-2">
+                              <span className="font-bold text-red-600">{debtor.fullName}</span>
+                              <ArrowRight size={16} className="text-gray-400" />
+                              <span className="font-bold text-green-600">{creditor.fullName}</span>
+                            </div>
+                            <span className="font-bold text-lg">₹{amount}</span>
+                          </div>
 
-                              <div className="flex flex-col items-center px-4">
-                                <ArrowRight className="text-gray-400" />
-                                <span className="text-xs text-gray-400 mt-1">pays</span>
-                              </div>
-
-                              <div className="text-center">
-                                <span className="font-bold text-green-600 block text-lg">{s.to}</span>
-                                <span className="text-xs text-gray-500">
-                                  Total: <span className="text-green-600">
-                                    +{Object.values(playerTotals).find(p => p.fullName === s.to)?.totalNet > 0
-                                      ? `₹${(Object.values(playerTotals).find(p => p.fullName === s.to)?.totalNet / 100).toFixed(0)}`
-                                      : 'Error'}
-                                  </span>
+                          {/* Verification UI */}
+                          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
+                            <div className="flex items-center gap-2">
+                              {status === 'paid' && (
+                                <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">
+                                  <CheckCircle size={12} /> VERIFIED
                                 </span>
-                              </div>
+                              )}
+                              {status === 'pending_approval' && (
+                                <span className="flex items-center gap-1 text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
+                                  <AlertCircle size={12} /> PENDING APPROVAL
+                                </span>
+                              )}
+                              {status === 'pending' && (
+                                <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
+                                  UNPAID
+                                </span>
+                              )}
+                              {status === 'rejected' && (
+                                <span className="text-xs font-bold text-red-500 bg-red-100 px-2 py-1 rounded-full">
+                                  REJECTED
+                                </span>
+                              )}
                             </div>
 
-                            <div className="flex items-center gap-4">
-                              <span className="text-2xl font-bold text-gray-800">₹{s.actualValue}</span>
+                            <div className="flex gap-2">
+                              {/* Actions for Debtor */}
+                              {isDebtor && (status === 'pending' || status === 'rejected') && (
+                                <button
+                                  onClick={() => handleSettlementAction(debtor.name, creditor.name, amount, 'pay')}
+                                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
+                                >
+                                  Mark Paid
+                                </button>
+                              )}
+                              {isDebtor && status === 'pending_approval' && (
+                                <span className="text-xs text-gray-500 italic">Waiting for approval...</span>
+                              )}
 
-                              <select
-                                value={savedStatus}
-                                onChange={handleStatusChange}
-                                className={`text-sm font-semibold py-2 px-3 rounded border cursor-pointer outline-none focus:ring-2 focus:ring-offset-1 ${getStatusColor(savedStatus)}`}
-                              >
-                                <option value="pending">⏳ Pending</option>
-                                <option value="paid">✓ Paid</option>
-                                <option value="adjusted_players">👥 Adj. with Players</option>
-                                <option value="adjusted_offline">🎲 Adj. with Offline</option>
-                              </select>
+                              {/* Actions for Creditor */}
+                              {isCreditor && status === 'pending_approval' && (
+                                <>
+                                  <button
+                                    onClick={() => handleSettlementAction(debtor.name, creditor.name, amount, 'approve')}
+                                    className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
+                                  >
+                                    Approve
+                                  </button>
+                                  <button
+                                    onClick={() => handleSettlementAction(debtor.name, creditor.name, amount, 'reject')}
+                                    className="px-3 py-1 text-xs bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+
+                          {/* Verification Details (Net P/L) */}
+                          <div className="flex justify-between text-xs text-gray-500 bg-gray-50 p-2 rounded">
+                            <div>
+                              {debtor.fullName}: <span className={debtor.totalNet > 0 ? 'text-green-600' : 'text-red-600'}>
+                                {debtor.totalNet > 0 ? '+' : ''}₹{Math.round(debtor.totalNet / 100)}
+                              </span>
+                            </div>
+                            <div>
+                              {creditor.fullName}: <span className={creditor.totalNet > 0 ? 'text-green-600' : 'text-red-600'}>
+                                {creditor.totalNet > 0 ? '+' : ''}₹{Math.round(creditor.totalNet / 100)}
+                              </span>
                             </div>
                           </div>
                         </div>
@@ -1381,3 +1666,5 @@ function App() {
     </div>
   );
 }
+
+export default App;
