@@ -1758,11 +1758,12 @@ export default function PokerNowReporter() {
                       };
 
                       return (
-                        <div key={i} className="bg-white p-4 rounded shadow mb-2 flex flex-col sm:flex-row justify-between items-center gap-4">
+                        <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded shadow-lg border dark:border-gray-700 mb-2 flex flex-col sm:flex-row justify-between items-center gap-4">
                           <div className="flex items-center gap-4 flex-1">
-                            <span className="font-bold text-red-600">{s.from}</span>
-                            <ArrowRight className="text-gray-400" size={20} />
-                            <span className="font-bold text-green-600">{s.to}</span>
+                            <span className="font-bold text-red-600 dark:text-red-400">{s.from}</span>
+                            <ArrowRight className="text-gray-400 dark:text-gray-500" size={20} />
+                            <span className="font-bold text-green-600 dark:text-green-400">{s.to}</span>
+                            <span className="ml-4 text-2xl font-bold text-orange-600 dark:text-orange-400">₹{s.amount}</span>
                           </div>
 
                           <div className="flex items-center gap-3 flex-wrap justify-end">
