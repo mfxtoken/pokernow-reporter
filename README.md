@@ -159,8 +159,18 @@ const playerAliases = {
 2. Go to [vercel.com](https://vercel.com)
 3. Click "New Project"
 4. Import your GitHub repository
-5. Vercel auto-detects Vite settings
+5. **IMPORTANT: Configure Environment Variables**
+   - Expand the "Environment Variables" section
+   - Add `VITE_SUPABASE_URL` with your value
+   - Add `VITE_SUPABASE_ANON_KEY` with your value
 6. Click "Deploy"
+
+### Troubleshooting Deployment
+If you see "Supabase not configured" in your deployed app:
+1. Go to your Vercel Project Settings
+2. Click on **Environment Variables**
+3. Check if `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` are added
+4. If missing, add them and redeploy (Go to Deployments -> Redeploy)
 
 ### Deploy to Netlify
 

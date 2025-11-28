@@ -379,23 +379,30 @@ export default function PokerNowReporter() {
 
   const handleLinkProfile = async (e) => {
     e.preventDefault();
-    if (!user) {
-      showMessage('error', 'You must be logged in to link a profile');
-      return;
-    }
     const formData = new FormData(e.target);
     const playerName = formData.get('playerName');
-    console.log('Linking profile:', { userId: user.id, playerName });
-    try {
-      const updated = await updateProfile(user.id, playerName);
-      console.log('Profile update result:', updated);
-      setProfile(updated);
-      setShowProfileModal(false);
-      showMessage('success', `Profile linked to ${playerName}`);
-    } catch (error) {
-      console.error('Link profile error:', error);
-      showMessage('error', 'Failed to link profile: ' + (error?.message || error));
+    console.log('Linking profile:', { userId: user?.id, playerName });
+
+    if (user) {
+      // Authenticated: update Supabase profile
+      try {
+        const updated = await updateProfile(user.id, playerName);
+        console.log('Profile update result:', updated);
+        setProfile(updated);
+        showMessage('success', `Profile linked to ${playerName}`);
+      } catch (error) {
+        console.error('Link profile error (auth):', error);
+        showMessage('error', 'Failed to link profile: ' + (error?.message || error));
+      }
+    } else {
+      // No auth: store locally for UI personalization
+      const local = { player_name: playerName };
+      setProfile(local);
+      // Optionally persist in localStorage
+      localStorage.setItem('local_profile', JSON.stringify(local));
+      showMessage('success', `Profile set to ${playerName}`);
     }
+    setShowProfileModal(false);
   };
 
   const handleSettlementAction = async (debtor, creditor, amount, action) => {
@@ -1080,19 +1087,19 @@ export default function PokerNowReporter() {
             )}
 
             {/* Profile Linking Modal */}
-            {showProfileModal && user && (
+            {showProfileModal && (
               <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                 <div className="bg-white rounded-lg max-w-md w-full p-6">
                   <h2 className="text-2xl font-bold mb-4">Link Your Profile</h2>
                   <p className="text-sm text-gray-600 mb-4">
-                    {getAllPlayerNames().length > 0
-                      ? 'Select your player name to link your account and see personalized stats.'
-                      : 'Enter your player name. You can also upload game files first to see available names.'}
+                    {user ?
+                      'Select your player name to link your account and see personalized stats.'
+                      : 'Enter your player name for a personalized experience (no cloud sync).'}
                   </p>
                   <form onSubmit={handleLinkProfile} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Player Name</label>
-                      {getAllPlayerNames().length > 0 ? (
+                      {user && getAllPlayerNames().length > 0 ? (
                         <select
                           name="playerName"
                           required
