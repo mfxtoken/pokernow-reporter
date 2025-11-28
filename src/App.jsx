@@ -1,25 +1,24 @@
 import React, { useState, useEffect } from 'react';
 import {
-  Upload,
-  Trophy,
-  Users,
-  Calendar,
-  ArrowRight,
+  Download,
+  Trash2,
+  AlertCircle,
+  CheckCircle,
   TrendingUp,
   TrendingDown,
-  CheckCircle,
+  Upload,
+  ArrowRight,
+  Database,
+  Save,
   Cloud,
   Settings,
-  Database,
+  Users,
+  Calendar,
+  Trophy,
   LogOut,
   User,
-  Lock,
-  AlertCircle,
-  Save,
-  Download,
-  Trash2
+  Lock
 } from 'lucide-react';
-import db from './database';
 import {
   saveCredentials,
   hasCredentials,
@@ -41,146 +40,183 @@ import {
 const DB_NAME = 'PokerNowDB';
 const DB_VERSION = 1;
 
-// PokerDatabase class removed - imported from ./db
+class PokerDatabase {
+  constructor() {
+    this.db = null;
+  }
 
-// const DB_NAME = 'PokerNowDB'; // No longer needed, db is imported
-// const DB_VERSION = 1; // No longer needed, db is imported
+  async init() {
+    return new Promise((resolve, reject) => {
+      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      request.onerror = () => reject(request.error);
+      request.onsuccess = () => {
+        this.db = request.result;
+        resolve(this.db);
+      };
+      request.onupgradeneeded = (event) => {
+        const db = event.target.result;
+        if (!db.objectStoreNames.contains('games')) {
+          const store = db.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
+          store.createIndex('gameId', 'gameId', { unique: true });
+        }
+      };
+    });
+  }
 
-// class PokerDatabase { // No longer needed, db is imported
-//   constructor() {
-//     this.db = null;
-//   }
+  async saveGame(gameData) {
+    return new Promise((resolve, reject) => {
+      // First check if game already exists
+      const checkTransaction = this.db.transaction(['games'], 'readonly');
+      const checkStore = checkTransaction.objectStore('games');
+      const checkIndex = checkStore.index('gameId');
+      const checkRequest = checkIndex.get(gameData.gameId);
 
-//   async init() {
-//     return new Promise((resolve, reject) => {
-//       const request = indexedDB.open(DB_NAME, DB_VERSION);
-//       request.onerror = () => reject(request.error);
-//       request.onsuccess = () => {
-//         this.db = request.result;
-//         resolve(this.db);
-//       };
-//       request.onupgradeneeded = (event) => {
-//         const db = event.target.result;
-//         if (!db.objectStoreNames.contains('games')) {
-//           const store = db.createObjectStore('games', { keyPath: 'id', autoIncrement: true });
-//           store.createIndex('gameId', 'gameId', { unique: true });
-//         }
-//       };
-//     });
-//   }
+      checkRequest.onsuccess = () => {
+        if (checkRequest.result) {
+          console.log('Game already exists:', gameData.gameId);
+          resolve(checkRequest.result.id);
+          return;
+        }
 
-//   async saveGame(gameData) {
-//     return new Promise((resolve, reject) => {
-//       // First check if game already exists
-//       const checkTransaction = this.db.transaction(['games'], 'readonly');
-//       const checkStore = checkTransaction.objectStore('games');
-//       const checkIndex = checkStore.index('gameId');
-//       const checkRequest = checkIndex.get(gameData.gameId);
+        // Game doesn't exist, add it
+        const addTransaction = this.db.transaction(['games'], 'readwrite');
+        const addStore = addTransaction.objectStore('games');
 
-//       checkRequest.onsuccess = () => {
-//         if (checkRequest.result) {
-//           console.log('Game already exists:', gameData.gameId);
-//           resolve(checkRequest.result.id);
-//           return;
-//         }
+        addTransaction.onerror = (event) => {
+          console.error('Add transaction error:', event.target.error);
+          reject(event.target.error);
+        };
 
-//         // Game doesn't exist, add it
-//         const addTransaction = this.db.transaction(['games'], 'readwrite');
-//         const addStore = addTransaction.objectStore('games');
+        const addRequest = addStore.add(gameData);
 
-//         addTransaction.onerror = (event) => {
-//           console.error('Add transaction error:', event.target.error);
-//           reject(event.target.error);
-//         };
+        addRequest.onsuccess = () => {
+          console.log('✓ Game saved successfully with ID:', addRequest.result);
+          resolve(addRequest.result);
+        };
 
-//         const addRequest = addStore.add(gameData);
+        addRequest.onerror = (event) => {
+          console.error('✗ Add request error:', event.target.error);
+          reject(event.target.error);
+        };
+      };
 
-//         addRequest.onsuccess = () => {
-//           console.log('✓ Game saved successfully with ID:', addRequest.result);
-//           resolve(addRequest.result);
-//         };
+      checkRequest.onerror = () => {
+        console.error('Check request error, attempting to add anyway');
+        // Try to add anyway
+        const addTransaction = this.db.transaction(['games'], 'readwrite');
+        const addStore = addTransaction.objectStore('games');
+        const addRequest = addStore.add(gameData);
 
-//         addRequest.onerror = (event) => {
-//           console.error('✗ Add request error:', event.target.error);
-//           reject(event.target.error);
-//         };
-//       };
+        addRequest.onsuccess = () => {
+          console.log('✓ Game saved successfully with ID:', addRequest.result);
+          resolve(addRequest.result);
+        };
 
-//       checkRequest.onerror = () => {
-//         console.error('Check request error, attempting to add anyway');
-//         // Try to add anyway
-//         const addTransaction = this.db.transaction(['games'], 'readwrite');
-//         const addStore = addTransaction.objectStore('games');
-//         const addRequest = addStore.add(gameData);
+        addRequest.onerror = (event) => {
+          console.error('✗ Add request error:', event.target.error);
+          reject(event.target.error);
+        };
+      };
+    });
+  }
 
-//         addRequest.onsuccess = () => {
-//           console.log('✓ Game saved successfully with ID:', addRequest.result);
-//           resolve(addRequest.result);
-//         };
+  async getAllGames() {
+    const transaction = this.db.transaction(['games'], 'readonly');
+    const store = transaction.objectStore('games');
+    const request = store.getAll();
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve(request.result);
+      request.onerror = () => reject(request.error);
+    });
+  }
 
-//         addRequest.onerror = (event) => {
-//           console.error('✗ Add request error:', event.target.error);
-//           reject(event.target.error);
-//         };
-//       };
-//     });
-//   }
+  async getGameByGameId(gameId) {
+    return new Promise((resolve, reject) => {
+      try {
+        const transaction = this.db.transaction(['games'], 'readonly');
+        const store = transaction.objectStore('games');
+        const index = store.index('gameId');
+        const request = index.get(gameId);
 
-//   async getAllGames() {
-//     const transaction = this.db.transaction(['games'], 'readonly');
-//     const store = transaction.objectStore('games');
-//     const request = store.getAll();
-//     return new Promise((resolve, reject) => {
-//       request.onsuccess = () => resolve(request.result);
-//       request.onerror = () => reject(request.error);
-//     });
-//   }
+        request.onsuccess = () => {
+          resolve(request.result || null);
+        };
 
-//   async getGameByGameId(gameId) {
-//     return new Promise((resolve, reject) => {
-//       try {
-//         const transaction = this.db.transaction(['games'], 'readonly');
-//         const store = transaction.objectStore('games');
-//         const index = store.index('gameId');
-//         const request = index.get(gameId);
+        request.onerror = () => {
+          resolve(null);
+        };
+      } catch (error) {
+        console.error('getGameByGameId error:', error);
+        resolve(null);
+      }
+    });
+  }
 
-//         request.onsuccess = () => {
-//           resolve(request.result || null);
-//         };
+  async deleteGame(id) {
+    const transaction = this.db.transaction(['games'], 'readwrite');
+    const store = transaction.objectStore('games');
+    const request = store.delete(id);
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
 
-//         request.onerror = () => {
-//           resolve(null);
-//         };
-//       } catch (error) {
-//         console.error('getGameByGameId error:', error);
-//         resolve(null);
-//       }
-//     });
-//   }
+  async clearAllData() {
+    const transaction = this.db.transaction(['games'], 'readwrite');
+    const store = transaction.objectStore('games');
+    const request = store.clear();
+    return new Promise((resolve, reject) => {
+      request.onsuccess = () => resolve();
+      request.onerror = () => reject(request.error);
+    });
+  }
 
-//   async deleteGame(id) {
-//     const transaction = this.db.transaction(['games'], 'readwrite');
-//     const store = transaction.objectStore('games');
-//     const request = store.delete(id);
-//     return new Promise((resolve, reject) => {
-//       request.onsuccess = () => resolve();
-//       request.onerror = () => reject(request.error);
-//     });
-//   }
+  async exportToJSON() {
+    const games = await this.getAllGames();
+    return {
+      version: DB_VERSION,
+      exportDate: new Date().toISOString(),
+      games: games,
+      gameCount: games.length,
+      appName: 'PokerNow Reporter'
+    };
+  }
 
-//   async clearAllData() {
-//     const transaction = this.db.transaction(['games'], 'readwrite');
-// PokerDatabase class removed - imported from ./db
+  async importFromJSON(jsonData) {
+    if (!jsonData.games || !Array.isArray(jsonData.games)) {
+      throw new Error('Invalid backup file format');
+    }
 
-function App() {
+    // Clear existing data first
+    await this.clearAllData();
+
+    // Import each game
+    for (const game of jsonData.games) {
+      // Remove the database ID to let it auto-generate
+      const gameToImport = { ...game };
+      delete gameToImport.id;
+      await this.saveGame(gameToImport);
+    }
+
+    return jsonData.games.length;
+  }
+}
+
+const db = new PokerDatabase();
+
+export default function PokerNowReporter() {
   const [games, setGames] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [message, setMessage] = useState(null);
+  const [message, setMessage] = useState({ type: '', text: '' });
+  const [isInitialized, setIsInitialized] = useState(false);
+  const [showBackupModal, setShowBackupModal] = useState(false);
+  const [backupData, setBackupData] = useState('');
+
+  // Cloud Sync State
   const [showCloudModal, setShowCloudModal] = useState(false);
   const [isCloudConnected, setIsCloudConnected] = useState(hasCredentials());
   const [syncing, setSyncing] = useState(false);
-  const [showBackupModal, setShowBackupModal] = useState(false);
-  const [backupData, setBackupData] = useState('');
 
   // Auth State
   const [user, setUser] = useState(null);
@@ -209,11 +245,11 @@ function App() {
   };
 
   useEffect(() => {
-    loadGames();
+    initializeApp();
     checkUser();
 
     // Listen for auth changes
-    const { data: authListener } = onAuthStateChange(async (event, session) => {
+    const authListener = onAuthStateChange(async (event, session) => {
       if (session?.user) {
         setUser(session.user);
         loadProfile(session.user.id);
@@ -224,9 +260,74 @@ function App() {
     });
 
     return () => {
-      // authListener.subscription.unsubscribe(); // Supabase v2 style
+      // Cleanup if needed
+      if (authListener?.data?.subscription?.unsubscribe) {
+        authListener.data.subscription.unsubscribe();
+      }
     };
   }, []);
+
+  const initializeApp = async () => {
+    try {
+      console.log('🔄 Initializing database...');
+      await db.init();
+      console.log('✓ Database initialized');
+
+      await loadGames();
+      setIsInitialized(true);
+    } catch (error) {
+      console.error('❌ Init error:', error);
+      showMessage('error', 'Database initialization failed');
+      setIsInitialized(true);
+    }
+  };
+
+  const loadGames = async () => {
+    try {
+      const dbGames = await db.getAllGames();
+      console.log('✓ Loaded games from DB:', dbGames.length);
+
+      // If cloud is connected, fetch and merge
+      if (isCloudConnected) {
+        try {
+          const cloudGames = await fetchAllGames();
+          const cloudSettlements = await getSettlements();
+
+          // Convert cloud settlements array to object keyed by debtor-creditor
+          const settlementsMap = {};
+          cloudSettlements.forEach(s => {
+            settlementsMap[`${s.debtor}-${s.creditor}`] = s;
+          });
+          setSettlements(settlementsMap);
+
+          // Merge games (cloud is source of truth, but keep local for offline)
+          const mergedGames = [...dbGames];
+          cloudGames.forEach(cloudGame => {
+            if (!mergedGames.find(g => g.gameId === cloudGame.gameId)) {
+              mergedGames.push(cloudGame);
+            }
+          });
+          setGames(mergedGames);
+
+          if (mergedGames.length > dbGames.length) {
+            showMessage('success', `Synced ${mergedGames.length - dbGames.length} games from cloud`);
+          }
+        } catch (cloudError) {
+          console.error('Cloud fetch failed:', cloudError);
+          setGames(dbGames);
+        }
+      } else {
+        setGames(dbGames);
+      }
+
+      if (dbGames.length > 0) {
+        showMessage('success', `Database loaded: ${dbGames.length} games`);
+      }
+    } catch (error) {
+      console.error('Error loading games:', error);
+      showMessage('error', 'Failed to load games');
+    }
+  };
 
   const checkUser = async () => {
     const currentUser = await getCurrentUser();
@@ -246,59 +347,6 @@ function App() {
     }
   };
 
-  const loadGames = async () => {
-    try {
-      // 1. Load local games
-      const localGames = await db.getAllGames();
-      let allGames = [...localGames];
-
-      // 2. If connected, load cloud games and merge
-      if (isCloudConnected) {
-        try {
-          const [cloudGames, cloudSettlements] = await Promise.all([
-            fetchAllGames(),
-            getSettlements()
-          ]);
-
-          // Merge games logic: Add cloud games that aren't in local
-          const localIds = new Set(localGames.map(g => g.gameId));
-          const newFromCloud = cloudGames.filter(g => !localIds.has(g.gameId));
-
-          if (newFromCloud.length > 0) {
-            console.log(`Found ${newFromCloud.length} new games from cloud`);
-            // Save to local DB for offline access
-            for (const game of newFromCloud) {
-              await db.saveGame(game);
-            }
-            allGames = [...localGames, ...newFromCloud];
-          }
-
-          // Process settlements into a map: "debtor-creditor" -> status object
-          const settlementMap = {};
-          if (cloudSettlements) {
-            cloudSettlements.forEach(s => {
-              settlementMap[`${s.debtor}-${s.creditor}`] = s;
-            });
-          }
-          setSettlements(settlementMap);
-
-        } catch (err) {
-          console.error('Cloud fetch error:', err);
-          showMessage('error', 'Failed to fetch from cloud: ' + err.message);
-        }
-      }
-
-      setGames(allGames.sort((a, b) => new Date(b.date) - new Date(a.date)));
-
-      if (allGames.length > 0) {
-        showMessage('success', `Database loaded: ${allGames.length} games`);
-      }
-    } catch (error) {
-      console.error('Error loading games:', error);
-      showMessage('error', 'Failed to load games');
-    }
-  };
-
   const handleAuth = async (e) => {
     e.preventDefault();
     setAuthLoading(true);
@@ -309,10 +357,10 @@ function App() {
     try {
       if (authMode === 'signup') {
         await signUp(email, password);
-        showMessage('success', 'Sign up successful! Please check your email.');
+        showMessage('success', 'Account created! Please check your email.');
       } else {
         await signIn(email, password);
-        showMessage('success', 'Logged in successfully!');
+        showMessage('success', 'Logged in successfully');
         setShowAuthModal(false);
       }
     } catch (error) {
@@ -341,6 +389,36 @@ function App() {
       showMessage('success', `Profile linked to ${playerName}`);
     } catch (error) {
       showMessage('error', 'Failed to link profile: ' + error.message);
+    }
+  };
+
+  const handleSettlementAction = async (debtor, creditor, amount, action) => {
+    if (!isCloudConnected) {
+      showMessage('error', 'Please connect to Cloud Database to verify settlements');
+      return;
+    }
+    if (!profile) {
+      showMessage('error', 'Please link your profile to verify settlements');
+      return;
+    }
+
+    let newStatus;
+    if (action === 'pay') newStatus = 'pending_approval';
+    if (action === 'approve') newStatus = 'paid';
+    if (action === 'reject') newStatus = 'rejected';
+
+    try {
+      await updateSettlement(debtor, creditor, newStatus, amount);
+
+      // Update local state immediately
+      setSettlements(prev => ({
+        ...prev,
+        [`${debtor}-${creditor}`]: { debtor, creditor, status: newStatus, amount }
+      }));
+
+      showMessage('success', `Settlement updated: ${newStatus.replace('_', ' ')}`);
+    } catch (error) {
+      showMessage('error', 'Failed to update settlement: ' + error.message);
     }
   };
 
@@ -443,36 +521,6 @@ function App() {
     };
   };
 
-  const handleSettlementAction = async (debtor, creditor, amount, action) => {
-    if (!isCloudConnected) {
-      showMessage('error', 'Please connect to Cloud Database to verify settlements');
-      return;
-    }
-    if (!profile) {
-      showMessage('error', 'Please link your profile to verify settlements');
-      return;
-    }
-
-    let newStatus;
-    if (action === 'pay') newStatus = 'pending_approval';
-    if (action === 'approve') newStatus = 'paid';
-    if (action === 'reject') newStatus = 'rejected';
-
-    try {
-      await updateSettlement(debtor, creditor, newStatus, amount);
-
-      // Update local state immediately
-      setSettlements(prev => ({
-        ...prev,
-        [`${debtor}-${creditor}`]: { debtor, creditor, status: newStatus, amount }
-      }));
-
-      showMessage('success', `Settlement updated: ${newStatus.replace('_', ' ')}`);
-    } catch (error) {
-      showMessage('error', 'Failed to update settlement: ' + error.message);
-    }
-  };
-
   const handleFileUpload = async (event) => {
     console.log('File upload triggered');
     const files = Array.from(event.target.files);
@@ -536,20 +584,6 @@ function App() {
 
           console.log('Saving game:', gameData);
           await db.saveGame(gameData);
-
-          // Upload to cloud if connected
-          if (isCloudConnected) {
-            try {
-              console.log('Uploading to cloud...');
-              const result = await uploadGame(gameData);
-              console.log('Cloud upload result:', result);
-            } catch (cloudError) {
-              console.error('Cloud upload failed:', cloudError);
-              // Don't fail the whole process, just log it
-              errors.push(`${file.name} (Cloud upload failed: ${cloudError.message})`);
-            }
-          }
-
           successCount++;
           console.log('Game saved successfully');
         } catch (error) {
@@ -794,202 +828,63 @@ function App() {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 font-sans text-gray-900">
-      <div className="max-w-6xl mx-auto">
-        <header className="mb-12 text-center relative">
-          <div className="absolute right-0 top-0 flex gap-2">
-            {/* Auth Button */}
-            {user ? (
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-gray-600 hidden md:inline">
-                  {profile?.player_name || user.email}
-                </span>
-                <button
-                  onClick={handleLogout}
-                  className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-gray-200 text-gray-700 hover:bg-gray-300 transition-colors"
-                >
-                  <LogOut size={16} />
-                  Logout
-                </button>
-              </div>
-            ) : (
-              <button
-                onClick={() => setShowAuthModal(true)}
-                className="flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium bg-blue-600 text-white hover:bg-blue-700 transition-colors shadow-sm"
-              >
-                <User size={16} />
-                Login
-              </button>
-            )}
-
-            <button
-              onClick={() => setShowCloudModal(true)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-full text-sm font-medium transition-colors ${isCloudConnected
-                ? 'bg-green-100 text-green-700 hover:bg-green-200'
-                : 'bg-gray-200 text-gray-700 hover:bg-gray-300'
-                }`}
-            >
-              {isCloudConnected ? <Cloud size={16} /> : <Database size={16} />}
-              {isCloudConnected ? 'Cloud Synced' : 'Setup Cloud'}
-            </button>
-          </div>
-
-          <h1 className="text-5xl font-extrabold text-transparent bg-clip-text bg-gradient-to-r from-blue-600 to-purple-600 mb-4">
-            PokerNow Reporter
-          </h1>
-          <p className="text-gray-600 text-lg">Track your game statistics and settlements</p>
-        </header>
-
-        {/* Auth Modal */}
-        {showAuthModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full shadow-2xl">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <User className="text-blue-600" /> {authMode === 'login' ? 'Login' : 'Sign Up'}
-                </h2>
-                <button onClick={() => setShowAuthModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
-
-              <form onSubmit={handleAuth}>
-                <div className="mb-4">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email</label>
-                  <input
-                    name="email"
-                    type="email"
-                    required
-                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Password</label>
-                  <input
-                    name="password"
-                    type="password"
-                    required
-                    minLength={6}
-                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                  />
-                </div>
-                <button
-                  type="submit"
-                  disabled={authLoading}
-                  className="w-full py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold shadow-lg transition-transform transform hover:-translate-y-0.5 disabled:opacity-50"
-                >
-                  {authLoading ? 'Processing...' : (authMode === 'login' ? 'Login' : 'Sign Up')}
-                </button>
-
-                <div className="mt-4 text-center text-sm">
-                  {authMode === 'login' ? (
-                    <p>Don't have an account? <button type="button" onClick={() => setAuthMode('signup')} className="text-blue-600 font-semibold hover:underline">Sign Up</button></p>
-                  ) : (
-                    <p>Already have an account? <button type="button" onClick={() => setAuthMode('login')} className="text-blue-600 font-semibold hover:underline">Login</button></p>
-                  )}
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Profile Linking Modal */}
-        {showProfileModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full shadow-2xl">
-              <h2 className="text-2xl font-bold mb-4 flex items-center gap-2">
-                <Users className="text-blue-600" /> Who are you?
-              </h2>
-              <p className="text-gray-600 mb-6">Link your account to a player profile to see personalized stats.</p>
-
-              <form onSubmit={handleLinkProfile}>
-                <div className="mb-6">
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Select Player Name</label>
-                  <select
-                    name="playerName"
-                    required
-                    className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                  >
-                    <option value="">-- Select your name --</option>
-                    {getAllPlayerNames().map(name => (
-                      <option key={name} value={name}>{name}</option>
-                    ))}
-                  </select>
-                </div>
-                <button
-                  type="submit"
-                  className="w-full py-3 bg-green-600 text-white rounded hover:bg-green-700 font-bold shadow-lg"
-                >
-                  Link Profile
-                </button>
-              </form>
-            </div>
-          </div>
-        )}
-
-        {/* Cloud Settings Modal */}
-        {showCloudModal && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-            <div className="bg-white rounded-lg p-8 max-w-md w-full shadow-2xl">
-              <div className="flex justify-between items-center mb-6">
-                <h2 className="text-2xl font-bold flex items-center gap-2">
-                  <Cloud className="text-blue-600" /> Cloud Database
-                </h2>
-                <button onClick={() => setShowCloudModal(false)} className="text-gray-400 hover:text-gray-600">✕</button>
-              </div>
-
-              {isCloudConnected ? (
-                <div className="text-center">
-                  <div className="bg-green-50 text-green-800 p-4 rounded mb-6">
-                    <CheckCircle className="mx-auto mb-2" size={32} />
-                    <p className="font-semibold">Connected to Supabase</p>
-                    <p className="text-sm mt-1">Your games are safe in the cloud.</p>
-                  </div>
-                  <button
-                    onClick={handleDisconnect}
-                    className="w-full py-2 px-4 bg-red-100 text-red-700 rounded hover:bg-red-200 font-medium"
-                  >
-                    Disconnect
-                  </button>
-                </div>
-              ) : (
-                <form onSubmit={handleCloudConnect}>
-                  <div className="mb-4">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Supabase URL</label>
-                    <input
-                      name="url"
-                      type="text"
-                      required
-                      placeholder="https://xyz.supabase.co"
-                      className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <div className="mb-6">
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Supabase Anon Key</label>
-                    <input
-                      name="key"
-                      type="password"
-                      required
-                      placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
-                      className="w-full p-2 border rounded focus:ring-2 focus:ring-blue-500 outline-none"
-                    />
-                  </div>
-                  <button
-                    type="submit"
-                    className="w-full py-3 bg-blue-600 text-white rounded hover:bg-blue-700 font-bold shadow-lg transition-transform transform hover:-translate-y-0.5"
-                  >
-                    Connect Database
-                  </button>
-                  <p className="text-xs text-gray-500 mt-4 text-center">
-                    Create a free project at <a href="https://supabase.com" target="_blank" className="text-blue-600 hover:underline">supabase.com</a>
-                  </p>
-                </form>
-              )}
-            </div>
-          </div>
-        )}
+    <div className="min-h-screen bg-gradient-to-br from-green-900 to-green-700 p-6">
+      <div className="max-w-7xl mx-auto">
         <div className="bg-white rounded-lg shadow-2xl overflow-hidden">
           <div className="bg-gradient-to-r from-green-600 to-green-500 p-6 text-white">
-            <h1 className="text-3xl font-bold">PokerNow Game Reporter</h1>
-            <p className="mt-2 opacity-90">Track and analyze your poker game performance</p>
+            <div className="flex justify-between items-center">
+              <div>
+                <h1 className="text-3xl font-bold">PokerNow Game Reporter</h1>
+                <p className="mt-2 opacity-90">Track and analyze your poker game performance</p>
+              </div>
+              <div className="flex gap-3">
+                {/* Cloud Sync Button */}
+                <button
+                  onClick={() => setShowCloudModal(true)}
+                  className={`px-4 py-2 rounded-lg flex items-center gap-2 font-semibold transition-colors ${isCloudConnected
+                    ? 'bg-blue-500 hover:bg-blue-600'
+                    : 'bg-white/20 hover:bg-white/30'
+                    }`}
+                >
+                  <Cloud size={20} />
+                  {isCloudConnected ? 'Cloud Connected' : 'Setup Cloud'}
+                </button>
+
+                {/* Auth Button */}
+                {user ? (
+                  <div className="relative group">
+                    <button className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 font-semibold transition-colors">
+                      <User size={20} />
+                      {profile?.player_name || user.email}
+                    </button>
+                    <div className="absolute right-0 mt-2 w-48 bg-white rounded-lg shadow-lg py-2 hidden group-hover:block z-10">
+                      <button
+                        onClick={() => setShowProfileModal(true)}
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <Settings size={16} />
+                        Link Profile
+                      </button>
+                      <button
+                        onClick={handleLogout}
+                        className="w-full px-4 py-2 text-left text-gray-700 hover:bg-gray-100 flex items-center gap-2"
+                      >
+                        <LogOut size={16} />
+                        Logout
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => setShowAuthModal(true)}
+                    className="px-4 py-2 bg-white/20 hover:bg-white/30 rounded-lg flex items-center gap-2 font-semibold transition-colors"
+                  >
+                    <Lock size={20} />
+                    Login
+                  </button>
+                )}
+              </div>
+            </div>
           </div>
 
           <div className="p-6">
@@ -1048,6 +943,174 @@ function App() {
                       💡 <strong>Note:</strong> If download is blocked, use "Copy to Clipboard" and paste into a text editor to save as <code className="bg-gray-200 px-2 py-1 rounded">backup.json</code>
                     </p>
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Auth Modal */}
+            {showAuthModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-md w-full p-6">
+                  <h2 className="text-2xl font-bold mb-4">{authMode === 'login' ? 'Login' : 'Sign Up'}</h2>
+                  <form onSubmit={handleAuth} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Email</label>
+                      <input
+                        type="email"
+                        name="email"
+                        required
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Password</label>
+                      <input
+                        type="password"
+                        name="password"
+                        required
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        disabled={authLoading}
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50"
+                      >
+                        {authLoading ? 'Processing...' : (authMode === 'login' ? 'Login' : 'Sign Up')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowAuthModal(false)}
+                        className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                  <button
+                    onClick={() => setAuthMode(authMode === 'login' ? 'signup' : 'login')}
+                    className="mt-4 text-sm text-blue-600 hover:underline"
+                  >
+                    {authMode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Login'}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* Cloud Setup Modal */}
+            {showCloudModal && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-md w-full p-6">
+                  <h2 className="text-2xl font-bold mb-4">Cloud Database Setup</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Enter your Supabase credentials to enable cloud sync and settlement verification.
+                  </p>
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const formData = new FormData(e.target);
+                      const url = formData.get('url');
+                      const key = formData.get('key');
+                      saveCredentials(url, key);
+                      setIsCloudConnected(true);
+                      setShowCloudModal(false);
+                      showMessage('success', 'Cloud connected!');
+                      loadGames(); // Reload to fetch cloud data
+                    }}
+                    className="space-y-4"
+                  >
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Supabase URL</label>
+                      <input
+                        type="url"
+                        name="url"
+                        required
+                        placeholder="https://your-project.supabase.co"
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Supabase Anon Key</label>
+                      <input
+                        type="text"
+                        name="key"
+                        required
+                        placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      />
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Connect
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowCloudModal(false)}
+                        className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
+                  {isCloudConnected && (
+                    <button
+                      onClick={() => {
+                        clearCredentials();
+                        setIsCloudConnected(false);
+                        setShowCloudModal(false);
+                        showMessage('info', 'Cloud disconnected');
+                      }}
+                      className="mt-4 text-sm text-red-600 hover:underline"
+                    >
+                      Disconnect Cloud
+                    </button>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {/* Profile Linking Modal */}
+            {showProfileModal && user && (
+              <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                <div className="bg-white rounded-lg max-w-md w-full p-6">
+                  <h2 className="text-2xl font-bold mb-4">Link Your Profile</h2>
+                  <p className="text-sm text-gray-600 mb-4">
+                    Select your player name to link your account and see personalized stats.
+                  </p>
+                  <form onSubmit={handleLinkProfile} className="space-y-4">
+                    <div>
+                      <label className="block text-sm font-medium mb-1">Player Name</label>
+                      <select
+                        name="playerName"
+                        required
+                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                      >
+                        <option value="">Select your player name...</option>
+                        {getAllPlayerNames().map(name => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <button
+                        type="submit"
+                        className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700"
+                      >
+                        Link Profile
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setShowProfileModal(false)}
+                        className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </form>
                 </div>
               </div>
             )}
@@ -1331,8 +1394,8 @@ function App() {
                                   style={{ height: `${(count / maxGames) * 100}%`, minHeight: count > 0 ? '4px' : '4px' }}
                                 >
                                   {count > 0 && (
-                                    <div className="absolute -top-6 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-100 transition-opacity whitespace-nowrap z-10">
-                                      {count}
+                                    <div className="absolute -top-8 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white text-xs py-1 px-2 rounded opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-10">
+                                      {count} game{count !== 1 ? 's' : ''}
                                     </div>
                                   )}
                                 </div>
@@ -1474,125 +1537,20 @@ function App() {
                 <div className="mb-8 bg-orange-50 p-6 rounded-lg">
                   <h2 className="text-2xl font-bold mb-4">💰 Settlements</h2>
                   {(() => {
-                    const calculatedSettlements = calculateSettlements();
-                    if (calculatedSettlements.length === 0) {
+                    const settlements = calculateSettlements();
+                    if (settlements.length === 0) {
                       return <p className="text-center text-gray-600">All even!</p>;
                     }
-
-                    // Get player totals for verification
-                    const playerTotals = {};
-                    games.forEach(game => {
-                      if (game.players) {
-                        game.players.forEach(player => {
-                          const key = player.name.toLowerCase().trim();
-                          const fullName = player.fullName || getPlayerFullName(player.name);
-                          if (!playerTotals[key]) {
-                            playerTotals[key] = { fullName, totalNet: 0 };
-                          }
-                          playerTotals[key].totalNet += player.net || 0;
-                        });
-                      }
-                    });
-
-                    return calculatedSettlements.map((s, i) => {
-                      const debtor = { name: s.from, fullName: getPlayerFullName(s.from), totalNet: Object.values(playerTotals).find(p => p.fullName === s.from)?.totalNet || 0 };
-                      const creditor = { name: s.to, fullName: getPlayerFullName(s.to), totalNet: Object.values(playerTotals).find(p => p.fullName === s.to)?.totalNet || 0 };
-                      const amount = s.actualValue;
-
-                      const settlementKey = `${debtor.name}-${creditor.name}`;
-                      const cloudSettlement = settlements[settlementKey];
-                      const status = cloudSettlement?.status || 'pending';
-
-                      // Determine if current user is involved
-                      const isDebtor = profile && profile.player_name === debtor.name;
-                      const isCreditor = profile && profile.player_name === creditor.name;
-
-                      return (
-                        <div key={i} className="bg-white p-4 rounded-lg shadow border border-gray-200 flex flex-col gap-3">
-                          <div className="flex justify-between items-center">
-                            <div className="flex items-center gap-2">
-                              <span className="font-bold text-red-600">{debtor.fullName}</span>
-                              <ArrowRight size={16} className="text-gray-400" />
-                              <span className="font-bold text-green-600">{creditor.fullName}</span>
-                            </div>
-                            <span className="font-bold text-lg">₹{amount}</span>
-                          </div>
-
-                          {/* Verification UI */}
-                          <div className="flex justify-between items-center pt-2 border-t border-gray-100">
-                            <div className="flex items-center gap-2">
-                              {status === 'paid' && (
-                                <span className="flex items-center gap-1 text-xs font-bold text-green-600 bg-green-100 px-2 py-1 rounded-full">
-                                  <CheckCircle size={12} /> VERIFIED
-                                </span>
-                              )}
-                              {status === 'pending_approval' && (
-                                <span className="flex items-center gap-1 text-xs font-bold text-yellow-600 bg-yellow-100 px-2 py-1 rounded-full">
-                                  <AlertCircle size={12} /> PENDING APPROVAL
-                                </span>
-                              )}
-                              {status === 'pending' && (
-                                <span className="text-xs font-bold text-gray-500 bg-gray-100 px-2 py-1 rounded-full">
-                                  UNPAID
-                                </span>
-                              )}
-                              {status === 'rejected' && (
-                                <span className="text-xs font-bold text-red-500 bg-red-100 px-2 py-1 rounded-full">
-                                  REJECTED
-                                </span>
-                              )}
-                            </div>
-
-                            <div className="flex gap-2">
-                              {/* Actions for Debtor */}
-                              {isDebtor && (status === 'pending' || status === 'rejected') && (
-                                <button
-                                  onClick={() => handleSettlementAction(debtor.name, creditor.name, amount, 'pay')}
-                                  className="px-3 py-1 text-xs bg-blue-600 text-white rounded hover:bg-blue-700 transition-colors"
-                                >
-                                  Mark Paid
-                                </button>
-                              )}
-                              {isDebtor && status === 'pending_approval' && (
-                                <span className="text-xs text-gray-500 italic">Waiting for approval...</span>
-                              )}
-
-                              {/* Actions for Creditor */}
-                              {isCreditor && status === 'pending_approval' && (
-                                <>
-                                  <button
-                                    onClick={() => handleSettlementAction(debtor.name, creditor.name, amount, 'approve')}
-                                    className="px-3 py-1 text-xs bg-green-600 text-white rounded hover:bg-green-700 transition-colors"
-                                  >
-                                    Approve
-                                  </button>
-                                  <button
-                                    onClick={() => handleSettlementAction(debtor.name, creditor.name, amount, 'reject')}
-                                    className="px-3 py-1 text-xs bg-red-100 text-red-600 rounded hover:bg-red-200 transition-colors"
-                                  >
-                                    Reject
-                                  </button>
-                                </>
-                              )}
-                            </div>
-                          </div>
-
-                          {/* Verification Details (Net P/L) */}
-                          <div className="flex justify-between text-xs text-gray-500 bg-gray-50 p-2 rounded">
-                            <div>
-                              {debtor.fullName}: <span className={debtor.totalNet > 0 ? 'text-green-600' : 'text-red-600'}>
-                                {debtor.totalNet > 0 ? '+' : ''}₹{Math.round(debtor.totalNet / 100)}
-                              </span>
-                            </div>
-                            <div>
-                              {creditor.fullName}: <span className={creditor.totalNet > 0 ? 'text-green-600' : 'text-red-600'}>
-                                {creditor.totalNet > 0 ? '+' : ''}₹{Math.round(creditor.totalNet / 100)}
-                              </span>
-                            </div>
-                          </div>
+                    return settlements.map((s, i) => (
+                      <div key={i} className="bg-white p-4 rounded shadow mb-2 flex justify-between items-center">
+                        <div className="flex items-center gap-4">
+                          <span className="font-bold text-red-600">{s.from}</span>
+                          <ArrowRight />
+                          <span className="font-bold text-green-600">{s.to}</span>
                         </div>
-                      );
-                    });
+                        <span className="text-xl font-bold text-orange-600">₹{s.actualValue}</span>
+                      </div>
+                    ));
                   })()}
                 </div>
 
@@ -1666,5 +1624,3 @@ function App() {
     </div>
   );
 }
-
-export default App;

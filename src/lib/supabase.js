@@ -74,7 +74,10 @@ export const getCurrentUser = async () => {
 
 export const onAuthStateChange = (callback) => {
     const client = getSupabase();
-    if (!client) return null;
+    if (!client) {
+        // Return a safe object with a data property to prevent destructuring errors
+        return { data: { subscription: { unsubscribe: () => { } } } };
+    }
     return client.auth.onAuthStateChange((event, session) => {
         callback(event, session);
     });
