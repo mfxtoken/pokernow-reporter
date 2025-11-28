@@ -1583,9 +1583,9 @@ export default function PokerNowReporter() {
               })()}
 
               <div className="overflow-x-auto">
-                <table className="w-full text-sm bg-white rounded shadow">
+                <table className="w-full text-sm bg-white dark:bg-gray-800 rounded shadow">
                   <thead>
-                    <tr className="bg-blue-600 text-white">
+                    <tr className="bg-blue-600 dark:bg-blue-700 text-white">
                       <th className="p-3 text-left">Rank</th>
                       <th className="p-3 text-left">Player</th>
                       <th className="p-3 text-center">Games</th>
@@ -1821,40 +1821,42 @@ export default function PokerNowReporter() {
                       </p>
                       <p className="text-xs text-gray-500">{game.winner}</p>
                     </div>
-                    <div className="bg-purple-50 p-2 rounded">
-                      <p className="text-xs text-gray-600">Profit</p>
-                      <p className="font-bold">₹{game.winnerProfit}</p>
+                    <div className="bg-purple-50 dark:bg-purple-900/30 p-2 rounded">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Profit</p>
+                      <p className="font-bold dark:text-white">₹{game.winnerProfit}</p>
                     </div>
-                    <div className="bg-orange-50 p-2 rounded">
-                      <p className="text-xs text-gray-600">Total Pot</p>
-                      <p className="font-bold">₹{game.totalPot}</p>
+                    <div className="bg-orange-50 dark:bg-orange-900/30 p-2 rounded">
+                      <p className="text-xs text-gray-600 dark:text-gray-400">Total Pot</p>
+                      <p className="font-bold dark:text-white">₹{game.totalPot}</p>
                     </div>
                   </div>
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b">
-                        <th className="p-2 text-left">Player</th>
-                        <th className="p-2 text-right">Buy-In</th>
-                        <th className="p-2 text-right">Buy-Out</th>
-                        <th className="p-2 text-right">Net</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {game.players && game.players.map((p, i) => (
-                        <tr key={i} className="border-b">
-                          <td className="p-2">
-                            <div className="font-medium">{p.fullName || getPlayerFullName(p.name)}</div>
-                            <div className="text-xs text-gray-500">{p.name}</div>
-                          </td>
-                          <td className="p-2 text-right">₹{p.buyIn}</td>
-                          <td className="p-2 text-right">₹{p.buyOut}</td>
-                          <td className={`p-2 text-right font-bold ${p.net > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {p.net > 0 ? '+' : ''}₹{p.net}
-                          </td>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm dark:bg-gray-800">
+                      <thead>
+                        <tr className="border-b dark:border-gray-700">
+                          <th className="p-2 text-left dark:text-gray-300">Player</th>
+                          <th className="p-2 text-right dark:text-gray-300">Buy-In</th>
+                          <th className="p-2 text-right dark:text-gray-300">Buy-Out</th>
+                          <th className="p-2 text-right dark:text-gray-300">Net</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                      </thead>
+                      <tbody>
+                        {game.players && game.players.map((p, i) => (
+                          <tr key={i} className="border-b dark:border-gray-700">
+                            <td className="p-2">
+                              <div className="font-medium">{p.fullName || getPlayerFullName(p.name)}</div>
+                              <div className="text-xs text-gray-500">{p.name}</div>
+                            </td>
+                            <td className="p-2 text-right">₹{p.buyIn}</td>
+                            <td className="p-2 text-right">₹{p.buyOut}</td>
+                            <td className={`p-2 text-right font-bold ${p.net > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                              {p.net > 0 ? '+' : ''}₹{p.net}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 </div>
               ))}
             </div>
@@ -1862,6 +1864,6 @@ export default function PokerNowReporter() {
         )}
       </div>
     </div>
-    </div >
+    </div>
   );
 }
