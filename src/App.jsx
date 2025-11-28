@@ -1037,7 +1037,6 @@ export default function PokerNowReporter() {
       settlements.push({
         from: debtor.fullName,
         to: creditor.fullName,
-        to: creditor.fullName,
         amount: Math.round(amount),
         actualAmount: amount
       });
