@@ -183,7 +183,7 @@ export default function PokerNowReporter() {
     'sas': 'Simal Shah',
     'mani27': 'Manigandan Manjunathan',
     'gp': 'Gaurav Jain',
-    'pratik': 'Pratik Jain',
+    'pratik': 'Pratik Shah',
     'kd': 'Keval Desai',
     'harshit': 'Harshit Metha',
     'shivang': 'Shivang',
@@ -637,7 +637,7 @@ export default function PokerNowReporter() {
                       onClick={() => {
                         // Create download link
                         const element = document.createElement('a');
-                        const file = new Blob([backupData], {type: 'application/json'});
+                        const file = new Blob([backupData], { type: 'application/json' });
                         element.href = URL.createObjectURL(file);
                         element.download = `pokernow_backup_${new Date().toISOString().split('T')[0]}.json`;
                         document.body.appendChild(element);
@@ -668,9 +668,8 @@ export default function PokerNowReporter() {
             )}
 
             {message.text && (
-              <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${
-                message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
-              }`}>
+              <div className={`mb-4 p-4 rounded-lg flex items-center gap-2 ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                }`}>
                 {message.type === 'success' ? <CheckCircle size={20} /> : <AlertCircle size={20} />}
                 {message.text}
               </div>
@@ -779,6 +778,84 @@ export default function PokerNowReporter() {
 
                 <div className="mb-8 bg-blue-50 p-6 rounded-lg">
                   <h2 className="text-2xl font-bold mb-4">📊 Consolidated Player Statistics</h2>
+
+                  {/* Financial Summary Cards */}
+                  {(() => {
+                    const playerStats = {};
+                    games.forEach(game => {
+                      if (game.players) {
+                        game.players.forEach(player => {
+                          const key = player.name.toLowerCase().trim();
+                          const fullName = player.fullName || getPlayerFullName(player.name);
+                          if (!playerStats[key]) {
+                            playerStats[key] = {
+                              name: player.name,
+                              fullName: fullName,
+                              totalNet: 0
+                            };
+                          }
+                          playerStats[key].totalNet += player.net || 0;
+                        });
+                      }
+                    });
+
+                    const players = Object.values(playerStats);
+                    const totalReceivable = players
+                      .filter(p => p.totalNet > 0)
+                      .reduce((sum, p) => sum + p.totalNet, 0);
+                    const totalPayable = players
+                      .filter(p => p.totalNet < 0)
+                      .reduce((sum, p) => sum + Math.abs(p.totalNet), 0);
+                    const balance = totalReceivable - totalPayable;
+
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                        {/* Total Receivable */}
+                        <div className="bg-gradient-to-br from-green-500 to-green-600 rounded-lg p-6 text-white shadow-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-green-100 text-sm font-medium mb-1">Total Receivable</p>
+                              <p className="text-3xl font-bold">₹{(totalReceivable / 100).toFixed(2)}</p>
+                              <p className="text-green-100 text-xs mt-1">Amount to be received</p>
+                            </div>
+                            <TrendingUp size={48} className="opacity-50" />
+                          </div>
+                        </div>
+
+                        {/* Total Payable */}
+                        <div className="bg-gradient-to-br from-red-500 to-red-600 rounded-lg p-6 text-white shadow-lg">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-red-100 text-sm font-medium mb-1">Total Payable</p>
+                              <p className="text-3xl font-bold">₹{(totalPayable / 100).toFixed(2)}</p>
+                              <p className="text-red-100 text-xs mt-1">Amount to be paid</p>
+                            </div>
+                            <TrendingDown size={48} className="opacity-50" />
+                          </div>
+                        </div>
+
+                        {/* Balance Check */}
+                        <div className={`bg-gradient-to-br ${Math.abs(balance) < 1 ? 'from-blue-500 to-blue-600' :
+                          balance > 0 ? 'from-orange-500 to-orange-600' : 'from-purple-500 to-purple-600'
+                          } rounded-lg p-6 text-white shadow-lg`}>
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-white text-opacity-90 text-sm font-medium mb-1">Balance Check</p>
+                              <p className="text-3xl font-bold">
+                                {Math.abs(balance) < 1 ? '✓ Balanced' : `₹${Math.abs(balance / 100).toFixed(2)}`}
+                              </p>
+                              <p className="text-white text-opacity-90 text-xs mt-1">
+                                {Math.abs(balance) < 1 ? 'All settlements match' :
+                                  balance > 0 ? 'Receivable > Payable' : 'Payable > Receivable'}
+                              </p>
+                            </div>
+                            <CheckCircle size={48} className="opacity-50" />
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm bg-white rounded shadow">
                       <thead>
@@ -832,12 +909,11 @@ export default function PokerNowReporter() {
                               return (
                                 <tr key={i} className="border-b hover:bg-blue-50">
                                   <td className="p-3 text-center">
-                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${
-                                      i === 0 ? 'bg-yellow-400 text-yellow-900' :
+                                    <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
                                       i === 1 ? 'bg-gray-300 text-gray-700' :
-                                      i === 2 ? 'bg-orange-400 text-orange-900' :
-                                      'bg-gray-100 text-gray-600'
-                                    }`}>
+                                        i === 2 ? 'bg-orange-400 text-orange-900' :
+                                          'bg-gray-100 text-gray-600'
+                                      }`}>
                                       {i + 1}
                                     </span>
                                   </td>
@@ -857,19 +933,17 @@ export default function PokerNowReporter() {
                                     {p.totalNet > 0 ? '+' : ''}₹{p.totalNet.toLocaleString()}
                                   </td>
                                   <td className="p-3 text-center">
-                                    <span className={`px-2 py-1 rounded font-semibold ${
-                                      parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
+                                    <span className={`px-2 py-1 rounded font-semibold ${parseFloat(winRate) >= 50 ? 'bg-green-100 text-green-800' :
                                       parseFloat(winRate) >= 25 ? 'bg-yellow-100 text-yellow-800' :
-                                      'bg-red-100 text-red-800'
-                                    }`}>
+                                        'bg-red-100 text-red-800'
+                                      }`}>
                                       {winRate}%
                                     </span>
                                   </td>
-                                  <td className={`p-3 text-right font-semibold ${
-                                    parseFloat(actualValue) > 0 ? 'text-green-600' :
+                                  <td className={`p-3 text-right font-semibold ${parseFloat(actualValue) > 0 ? 'text-green-600' :
                                     parseFloat(actualValue) < 0 ? 'text-red-600' :
-                                    'text-gray-600'
-                                  }`}>
+                                      'text-gray-600'
+                                    }`}>
                                     {parseFloat(actualValue) > 0 ? '+' : ''}₹{actualValue}
                                   </td>
                                 </tr>
