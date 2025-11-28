@@ -1079,21 +1079,38 @@ export default function PokerNowReporter() {
                 <div className="bg-white rounded-lg max-w-md w-full p-6">
                   <h2 className="text-2xl font-bold mb-4">Link Your Profile</h2>
                   <p className="text-sm text-gray-600 mb-4">
-                    Select your player name to link your account and see personalized stats.
+                    {getAllPlayerNames().length > 0
+                      ? 'Select your player name to link your account and see personalized stats.'
+                      : 'Enter your player name. You can also upload game files first to see available names.'}
                   </p>
                   <form onSubmit={handleLinkProfile} className="space-y-4">
                     <div>
                       <label className="block text-sm font-medium mb-1">Player Name</label>
-                      <select
-                        name="playerName"
-                        required
-                        className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
-                      >
-                        <option value="">Select your player name...</option>
-                        {getAllPlayerNames().map(name => (
-                          <option key={name} value={name}>{name}</option>
-                        ))}
-                      </select>
+                      {getAllPlayerNames().length > 0 ? (
+                        <select
+                          name="playerName"
+                          required
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        >
+                          <option value="">Select your player name...</option>
+                          {getAllPlayerNames().map(name => (
+                            <option key={name} value={name}>{name}</option>
+                          ))}
+                        </select>
+                      ) : (
+                        <input
+                          type="text"
+                          name="playerName"
+                          required
+                          placeholder="Enter your player name (e.g., Chintan Shah)"
+                          className="w-full px-3 py-2 border rounded-lg focus:ring-2 focus:ring-blue-500"
+                        />
+                      )}
+                      <p className="text-xs text-gray-500 mt-1">
+                        {getAllPlayerNames().length > 0
+                          ? `${getAllPlayerNames().length} player names found from uploaded games`
+                          : 'No games uploaded yet. Enter your name manually.'}
+                      </p>
                     </div>
                     <div className="flex gap-2">
                       <button
@@ -1107,7 +1124,7 @@ export default function PokerNowReporter() {
                         onClick={() => setShowProfileModal(false)}
                         className="px-4 py-2 bg-gray-200 rounded-lg hover:bg-gray-300"
                       >
-                        Cancel
+                        Skip for Now
                       </button>
                     </div>
                   </form>
