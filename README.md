@@ -154,3 +154,6 @@ If you encounter any issues, please open a GitHub issue with:
 - Browser version
 - Steps to reproduce
 - Console error messages (F12 → Console)
+
+---
+*Last updated: 2025-11-28*
