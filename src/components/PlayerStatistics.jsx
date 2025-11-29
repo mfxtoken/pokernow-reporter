@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import {
     Download,
     TrendingUp,
@@ -8,8 +8,10 @@ import {
     CheckCircle
 } from 'lucide-react';
 import html2canvas from 'html2canvas';
+import PlayerDetailView from './PlayerDetailView';
 
 const PlayerStatistics = ({ games, darkMode, getPlayerFullName }) => {
+    const [selectedPlayer, setSelectedPlayer] = useState(null);
     const reportRef = useRef(null);
 
     const handleShareReport = async () => {
@@ -40,6 +42,17 @@ const PlayerStatistics = ({ games, darkMode, getPlayerFullName }) => {
                 <Users size={48} className="mx-auto mb-4 opacity-50" />
                 <p>Upload some games to see player statistics</p>
             </div>
+        );
+    }
+
+    if (selectedPlayer) {
+        return (
+            <PlayerDetailView
+                player={selectedPlayer}
+                games={games}
+                darkMode={darkMode}
+                onBack={() => setSelectedPlayer(null)}
+            />
         );
     }
 
@@ -309,7 +322,12 @@ const PlayerStatistics = ({ games, darkMode, getPlayerFullName }) => {
                                     const winRate = p.games > 0 ? ((p.wins / p.games) * 100).toFixed(1) : '0.0';
 
                                     return (
-                                        <tr key={i} className="border-b hover:bg-blue-50">
+                                        <tr
+                                            key={i}
+                                            className="border-b hover:bg-blue-50 cursor-pointer transition-colors"
+                                            onClick={() => setSelectedPlayer({ name: p.name, fullName: p.fullName })}
+                                            title="Click to view player details"
+                                        >
                                             <td className="p-3 text-center">
                                                 <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full font-bold ${i === 0 ? 'bg-yellow-400 text-yellow-900' :
                                                     i === 1 ? 'bg-gray-300 text-gray-700' :

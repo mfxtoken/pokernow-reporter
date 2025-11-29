@@ -1585,8 +1585,7 @@ export default function PokerNowReporter() {
                                 <ArrowRight className="text-gray-400 dark:text-gray-500" size={20} />
                                 <span className="font-bold text-green-600 dark:text-green-400">{s.to}</span>
                                 <div className="ml-4">
-                                  <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">₹{s.amount}</div>
-                                  <div className="text-xs text-gray-500 dark:text-gray-400">Actual: ₹{s.actualAmount.toFixed(2)}</div>
+                                  <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">₹{s.actualAmount.toFixed(2)}</div>
                                 </div>
                               </div>
 

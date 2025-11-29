@@ -9,7 +9,8 @@ import {
     CartesianGrid,
     Tooltip,
     Legend,
-    ResponsiveContainer
+    ResponsiveContainer,
+    Cell
 } from 'recharts';
 import { TrendingUp, Trophy, Users } from 'lucide-react';
 
@@ -85,7 +86,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
         return Object.values(playerStats)
             .map(p => ({
                 ...p,
-                totalProfit: p.totalProfit / 100 // Convert to dollars
+                totalProfit: p.totalProfit / 100 // Convert to Rupees
             }))
             .sort((a, b) => b.totalProfit - a.totalProfit)
             .slice(0, 10); // Top 10 players
@@ -134,7 +135,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                             stroke={chartColors.text}
                             tick={{ fill: chartColors.text }}
                             label={{
-                                value: 'Profit ($)',
+                                value: 'Profit (₹)',
                                 angle: -90,
                                 position: 'insideLeft',
                                 fill: chartColors.text
@@ -147,7 +148,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                                 borderRadius: '8px',
                                 color: chartColors.text
                             }}
-                            formatter={(value) => [`$${value.toFixed(2)}`, 'Cumulative Profit']}
+                            formatter={(value) => [`₹${value.toFixed(2)}`, 'Cumulative Profit']}
                         />
                         <Legend />
                         <Line
@@ -198,7 +199,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                             }}
                             formatter={(value, name) => {
                                 if (name === 'count') return [value, 'Sessions'];
-                                return [`$${value.toFixed(2)}`, 'Total Amount'];
+                                return [`₹${value.toFixed(2)}`, 'Total Amount'];
                             }}
                         />
                         <Legend />
@@ -223,9 +224,10 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                             stroke={chartColors.text}
                             tick={{ fill: chartColors.text }}
                             label={{
-                                value: 'Total Profit ($)',
+                                value: 'Total Profit (₹)',
                                 position: 'insideBottom',
-                                fill: chartColors.text
+                                fill: chartColors.text,
+                                offset: -5
                             }}
                         />
                         <YAxis
@@ -242,14 +244,20 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                                 borderRadius: '8px',
                                 color: chartColors.text
                             }}
-                            formatter={(value) => [`$${value.toFixed(2)}`, 'Total Profit']}
+                            formatter={(value) => [`₹${value.toFixed(2)}`, 'Total Profit']}
                         />
                         <Legend />
                         <Bar
                             dataKey="totalProfit"
-                            fill={chartColors.primary}
                             name="Total Profit"
-                        />
+                        >
+                            {topPlayersData.map((entry, index) => (
+                                <Cell key={`cell-${index}`} fill={[
+                                    '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b', '#10b981',
+                                    '#3b82f6', '#6366f1', '#14b8a6', '#84cc16', '#d946ef'
+                                ][index % 10]} />
+                            ))}
+                        </Bar>
                     </BarChart>
                 </ResponsiveContainer>
             </div>
