@@ -14,7 +14,7 @@ import {
 } from 'recharts';
 import { TrendingUp, Trophy, Users } from 'lucide-react';
 
-const AnalyticsDashboard = ({ games, darkMode }) => {
+const AnalyticsDashboard = ({ games, darkMode, profile }) => {
     // Calculate bankroll trend over time
     const calculateBankrollTrend = () => {
         if (!games || games.length === 0) return [];
@@ -25,12 +25,23 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
 
         let cumulative = 0;
         return sortedGames.map((game, index) => {
-            const myProfit = game.players?.find(p => p.name === 'You')?.net || 0;
+            // Use profile player name if available, otherwise sum all players
+            let myProfit = 0;
+            if (profile && profile.player_name) {
+                const player = game.players?.find(p =>
+                    p.fullName?.toLowerCase().trim() === profile.player_name.toLowerCase().trim() ||
+                    p.name?.toLowerCase().trim() === profile.player_name.toLowerCase().trim()
+                );
+                myProfit = player?.net || 0;
+            } else {
+                // If no profile, show total pot movement (sum of all positive net)
+                myProfit = game.players?.reduce((sum, p) => sum + (p.net > 0 ? p.net : 0), 0) || 0;
+            }
             cumulative += myProfit;
             return {
                 game: `Game ${index + 1}`,
                 date: game.date,
-                profit: cumulative / 100 // Convert cents to dollars
+                profit: cumulative // Keep in original units (already in rupees/cents)
             };
         });
     };
@@ -40,15 +51,24 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
         if (!games || games.length === 0) return [];
 
         const distribution = games.reduce((acc, game) => {
-            const myProfit = game.players?.find(p => p.name === 'You')?.net || 0;
-            const profitDollars = myProfit / 100;
+            let myProfit = 0;
+            if (profile && profile.player_name) {
+                const player = game.players?.find(p =>
+                    p.fullName?.toLowerCase().trim() === profile.player_name.toLowerCase().trim() ||
+                    p.name?.toLowerCase().trim() === profile.player_name.toLowerCase().trim()
+                );
+                myProfit = player?.net || 0;
+            } else {
+                // If no profile, show aggregate data
+                myProfit = game.players?.reduce((sum, p) => sum + (p.net > 0 ? p.net : 0), 0) || 0;
+            }
 
-            if (profitDollars > 0) {
+            if (myProfit > 0) {
                 acc.wins++;
-                acc.totalWins += profitDollars;
-            } else if (profitDollars < 0) {
+                acc.totalWins += myProfit;
+            } else if (myProfit < 0) {
                 acc.losses++;
-                acc.totalLosses += Math.abs(profitDollars);
+                acc.totalLosses += Math.abs(myProfit);
             } else {
                 acc.breakeven++;
             }
@@ -86,7 +106,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
         return Object.values(playerStats)
             .map(p => ({
                 ...p,
-                totalProfit: p.totalProfit / 100 // Convert to Rupees
+                totalProfit: p.totalProfit // Keep in Rupees (no division)
             }))
             .sort((a, b) => b.totalProfit - a.totalProfit)
             .slice(0, 10); // Top 10 players
@@ -148,7 +168,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                                 borderRadius: '8px',
                                 color: chartColors.text
                             }}
-                            formatter={(value) => [`₹${value.toFixed(2)}`, 'Cumulative Profit']}
+                            formatter={(value) => [`₹${value.toLocaleString()}`, 'Cumulative Profit']}
                         />
                         <Legend />
                         <Line
@@ -199,7 +219,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                             }}
                             formatter={(value, name) => {
                                 if (name === 'count') return [value, 'Sessions'];
-                                return [`₹${value.toFixed(2)}`, 'Total Amount'];
+                                return [`₹${value.toLocaleString()}`, 'Total Amount'];
                             }}
                         />
                         <Legend />
@@ -244,7 +264,7 @@ const AnalyticsDashboard = ({ games, darkMode }) => {
                                 borderRadius: '8px',
                                 color: chartColors.text
                             }}
-                            formatter={(value) => [`₹${value.toFixed(2)}`, 'Total Profit']}
+                            formatter={(value) => [`₹${value.toLocaleString()}`, 'Total Profit']}
                         />
                         <Legend />
                         <Bar

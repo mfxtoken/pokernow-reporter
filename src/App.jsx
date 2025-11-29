@@ -242,6 +242,7 @@ export default function PokerNowReporter() {
     return saved ? JSON.parse(saved) : false;
   });
   const [activeTab, setActiveTab] = useState('dashboard'); // 'dashboard', 'analytics', 'database', 'settings'
+  const settlementsRef = useRef(null);
 
 
   useEffect(() => {
@@ -600,6 +601,28 @@ export default function PokerNowReporter() {
       }
     });
     return Array.from(names).sort();
+  };
+
+  const handleShareSettlements = async () => {
+    if (!settlementsRef.current) return;
+
+    try {
+      const canvas = await html2canvas(settlementsRef.current, {
+        backgroundColor: darkMode ? '#111827' : '#ffffff',
+        scale: 2,
+        logging: false,
+        useCORS: true
+      });
+
+      const image = canvas.toDataURL('image/png');
+      const link = document.createElement('a');
+      link.href = image;
+      link.download = `settlements-${new Date().toISOString().split('T')[0]}.png`;
+      link.click();
+    } catch (error) {
+      console.error('Error generating settlements report:', error);
+      showMessage('error', 'Failed to generate settlements image');
+    }
   };
 
   const showMessage = (type, text) => {
@@ -1002,9 +1025,28 @@ export default function PokerNowReporter() {
       }
     });
 
+    // Convert to array and apply rounding logic matching PlayerStatistics
     const players = Object.values(playerTotals);
-    const creditors = players.filter(p => p.totalNet > 0).sort((a, b) => b.totalNet - a.totalNet);
-    const debtors = players.filter(p => p.totalNet < 0).sort((a, b) => a.totalNet - b.totalNet);
+
+    // Calculate rounded values with adjustment
+    players.forEach(p => {
+      p.actualValue = p.totalNet / 100;
+      p.roundedValue = Math.round(p.actualValue);
+      p.roundingDiff = p.actualValue - p.roundedValue;
+    });
+
+    // Calculate total rounding difference and adjust
+    const totalRoundingDiff = players.reduce((sum, p) => sum + p.roundingDiff, 0);
+    if (Math.abs(totalRoundingDiff) > 0.01 && players.length > 0) {
+      const largestPlayer = players.reduce((max, p) =>
+        Math.abs(p.totalNet) > Math.abs(max.totalNet) ? p : max
+      );
+      largestPlayer.roundedValue += Math.round(totalRoundingDiff);
+    }
+
+    // Use rounded values for settlements
+    const creditors = players.filter(p => p.roundedValue > 0).sort((a, b) => b.roundedValue - a.roundedValue);
+    const debtors = players.filter(p => p.roundedValue < 0).sort((a, b) => a.roundedValue - b.roundedValue);
 
     const settlements = [];
     let ci = 0, di = 0;
@@ -1012,20 +1054,23 @@ export default function PokerNowReporter() {
     while (ci < creditors.length && di < debtors.length) {
       const creditor = creditors[ci];
       const debtor = debtors[di];
-      const amount = Math.min(creditor.totalNet, Math.abs(debtor.totalNet));
+      // Use absolute value for debtor amount since it's negative
+      const amount = Math.min(creditor.roundedValue, Math.abs(debtor.roundedValue));
 
-      settlements.push({
-        from: debtor.fullName,
-        to: creditor.fullName,
-        amount: Math.round(amount),
-        actualAmount: amount
-      });
+      if (amount > 0) {
+        settlements.push({
+          from: debtor.fullName,
+          to: creditor.fullName,
+          amount: amount,
+          actualAmount: amount // Now actualAmount is the same as amount (rounded)
+        });
 
-      creditor.totalNet -= amount;
-      debtor.totalNet += amount;
+        creditor.roundedValue -= amount;
+        debtor.roundedValue += amount;
+      }
 
-      if (creditor.totalNet === 0) ci++;
-      if (debtor.totalNet === 0) di++;
+      if (creditor.roundedValue === 0) ci++;
+      if (debtor.roundedValue === 0) di++;
     }
 
     return settlements;
@@ -1549,94 +1594,106 @@ export default function PokerNowReporter() {
 
 
 
-                    <div className="mb-8 bg-orange-50 dark:bg-orange-900/20 p-6 rounded-lg border-2 border-orange-200 dark:border-orange-700">
-                      <h2 className="text-2xl font-bold mb-4 dark:text-white">💰 Settlements</h2>
-                      {(() => {
-                        const settlements = calculateSettlements();
-                        if (settlements.length === 0) {
-                          return <p className="text-center text-gray-600">All even!</p>;
-                        }
-                        return settlements.map((s, i) => {
-                          const settlementKey = `${s.from}-${s.to}`;
-                          const currentStatus = settlements[settlementKey]?.status || 'pending';
-                          const isDebtor = profile?.player_name === s.from;
-                          const isCreditor = profile?.player_name === s.to;
+                    <div className="mb-8 bg-gradient-to-br from-orange-50 via-pink-50 to-purple-50 dark:from-orange-900/20 dark:via-pink-900/20 dark:to-purple-900/20 p-6 rounded-xl border-2 border-orange-300 dark:border-orange-600 shadow-lg">
+                      <div className="flex justify-between items-center mb-6">
+                        <h2 className="text-3xl font-bold bg-gradient-to-r from-orange-600 via-pink-600 to-purple-600 bg-clip-text text-transparent">💰 Settlements</h2>
+                        <button
+                          onClick={handleShareSettlements}
+                          className="px-4 py-2 bg-gradient-to-r from-purple-600 to-pink-600 text-white rounded-lg hover:from-purple-700 hover:to-pink-700 transition-all shadow-md flex items-center gap-2 font-semibold"
+                          title="Download settlements as image"
+                        >
+                          <Download size={18} />
+                          Share Report
+                        </button>
+                      </div>
+                      <div ref={settlementsRef} className="space-y-3">
+                        {(() => {
+                          const settlements = calculateSettlements();
+                          if (settlements.length === 0) {
+                            return <p className="text-center text-gray-600 dark:text-gray-400 py-8 text-lg">🎉 All even!</p>;
+                          }
+                          return settlements.map((s, i) => {
+                            const settlementKey = `${s.from}-${s.to}`;
+                            const currentStatus = settlements[settlementKey]?.status || 'pending';
+                            const isDebtor = profile?.player_name === s.from;
+                            const isCreditor = profile?.player_name === s.to;
 
-                          const getStatusColor = (status) => {
-                            switch (status) {
-                              case 'paid': return 'bg-green-100 text-green-800 border-green-200';
-                              case 'payment_sent': return 'bg-yellow-100 text-yellow-800 border-yellow-200';
-                              case 'adjusted': return 'bg-blue-100 text-blue-800 border-blue-200';
-                              case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200';
-                              default: return 'bg-gray-100 text-gray-800 border-gray-200';
-                            }
-                          };
+                            const getStatusColor = (status) => {
+                              switch (status) {
+                                case 'paid': return 'bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700';
+                                case 'payment_sent': return 'bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700';
+                                case 'adjusted': return 'bg-blue-100 text-blue-800 border-blue-200 dark:bg-blue-900/30 dark:text-blue-300 dark:border-blue-700';
+                                case 'adjusted_offline': return 'bg-purple-100 text-purple-800 border-purple-200 dark:bg-purple-900/30 dark:text-purple-300 dark:border-purple-700';
+                                default: return 'bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600';
+                              }
+                            };
 
-                          const formatStatus = (status) => {
-                            if (status === 'payment_sent') return 'Payment Sent';
-                            if (status === 'adjusted_offline') return 'Adj. (Offline)';
-                            return status.charAt(0).toUpperCase() + status.slice(1);
-                          };
+                            const formatStatus = (status) => {
+                              if (status === 'payment_sent') return 'Payment Sent';
+                              if (status === 'adjusted_offline') return 'Adj. (Offline)';
+                              return status.charAt(0).toUpperCase() + status.slice(1);
+                            };
 
-                          return (
-                            <div key={i} className="bg-white dark:bg-gray-800 p-4 rounded shadow-lg border dark:border-gray-700 mb-2 flex flex-col sm:flex-row justify-between items-center gap-4">
-                              <div className="flex items-center gap-4 flex-1">
-                                <span className="font-bold text-red-600 dark:text-red-400">{s.from}</span>
-                                <ArrowRight className="text-gray-400 dark:text-gray-500" size={20} />
-                                <span className="font-bold text-green-600 dark:text-green-400">{s.to}</span>
-                                <div className="ml-4">
-                                  <div className="text-2xl font-bold text-orange-600 dark:text-orange-400">₹{s.actualAmount.toFixed(2)}</div>
+                            return (
+                              <div key={i} className="bg-white dark:bg-gray-800 p-5 rounded-xl shadow-xl border-2 border-orange-200 dark:border-orange-700 hover:shadow-2xl transition-all duration-300 flex flex-col sm:flex-row justify-between items-center gap-4">
+                                <div className="flex items-center gap-4 flex-1">
+                                  <span className="font-bold text-lg text-red-600 dark:text-red-400 px-3 py-1 bg-red-50 dark:bg-red-900/20 rounded-lg">{s.from}</span>
+                                  <ArrowRight className="text-orange-500 dark:text-orange-400" size={24} />
+                                  <span className="font-bold text-lg text-green-600 dark:text-green-400 px-3 py-1 bg-green-50 dark:bg-green-900/20 rounded-lg">{s.to}</span>
+                                  <div className="ml-4">
+                                    <div className="text-3xl font-bold bg-gradient-to-r from-orange-600 to-pink-600 bg-clip-text text-transparent">₹{s.actualAmount.toFixed(2)}</div>
+                                  </div>
+                                </div>
+
+                                <div className="flex items-center gap-3 flex-wrap justify-end">
+
+                                  {/* Role-based Actions */}
+                                  {isDebtor && currentStatus === 'pending' && (
+                                    <button
+                                      onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'payment_sent')}
+                                      className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm"
+                                    >
+                                      Mark Paid
+                                    </button>
+                                  )}
+
+                                  {isCreditor && currentStatus === 'payment_sent' && (
+                                    <div className="flex gap-2">
+                                      <button
+                                        onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'paid')}
+                                        className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors shadow-sm"
+                                      >
+                                        Confirm
+                                      </button>
+                                      <button
+                                        onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'pending')}
+                                        className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors shadow-sm"
+                                      >
+                                        Reject
+                                      </button>
+                                    </div>
+                                  )}
+
+                                  {/* Status Dropdown (Manual Override) */}
+                                  <select
+                                    value={currentStatus}
+                                    onChange={(e) => handleSettlementAction(s.from, s.to, s.amount, e.target.value)}
+                                    className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer ${getStatusColor(currentStatus)}`}
+                                    disabled={!isCloudConnected}
+                                    title="Change status manually"
+                                  >
+                                    <option value="pending">Pending</option>
+                                    <option value="payment_sent">Payment Sent</option>
+                                    <option value="paid">Paid</option>
+                                    <option value="adjusted">Adjusted</option>
+                                    <option value="adjusted_offline">Adj. (Offline)</option>
+                                  </select>
                                 </div>
                               </div>
-
-                              <div className="flex items-center gap-3 flex-wrap justify-end">
-
-                                {/* Role-based Actions */}
-                                {isDebtor && currentStatus === 'pending' && (
-                                  <button
-                                    onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'payment_sent')}
-                                    className="px-3 py-1 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 transition-colors shadow-sm"
-                                  >
-                                    Mark Paid
-                                  </button>
-                                )}
-
-                                {isCreditor && currentStatus === 'payment_sent' && (
-                                  <div className="flex gap-2">
-                                    <button
-                                      onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'paid')}
-                                      className="px-3 py-1 bg-green-600 text-white text-sm rounded hover:bg-green-700 transition-colors shadow-sm"
-                                    >
-                                      Confirm
-                                    </button>
-                                    <button
-                                      onClick={() => handleSettlementAction(s.from, s.to, s.amount, 'pending')}
-                                      className="px-3 py-1 bg-red-500 text-white text-sm rounded hover:bg-red-600 transition-colors shadow-sm"
-                                    >
-                                      Reject
-                                    </button>
-                                  </div>
-                                )}
-
-                                {/* Status Dropdown (Manual Override) */}
-                                <select
-                                  value={currentStatus}
-                                  onChange={(e) => handleSettlementAction(s.from, s.to, s.amount, e.target.value)}
-                                  className={`px-3 py-1 rounded border text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-1 cursor-pointer ${getStatusColor(currentStatus)}`}
-                                  disabled={!isCloudConnected}
-                                  title="Change status manually"
-                                >
-                                  <option value="pending">Pending</option>
-                                  <option value="payment_sent">Payment Sent</option>
-                                  <option value="paid">Paid</option>
-                                  <option value="adjusted">Adjusted</option>
-                                  <option value="adjusted_offline">Adj. (Offline)</option>
-                                </select>
-                              </div>
-                            </div>
-                          );
-                        });
-                      })()}
+                            );
+                          });
+                        })()}
+                      </div>
                     </div>
 
                     <h2 className="text-2xl font-bold mb-4">🎮 Games</h2>
@@ -1719,7 +1776,7 @@ export default function PokerNowReporter() {
 
             {/* Analytics Tab */}
             {activeTab === 'analytics' && (
-              <AnalyticsDashboard games={games} darkMode={darkMode} />
+              <AnalyticsDashboard games={games} darkMode={darkMode} profile={profile} />
             )}
 
             {/* Database Tab */}
